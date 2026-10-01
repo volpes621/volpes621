@@ -1,0 +1,6 @@
+numpy>=1.24
+scipy>=1.10
+pillow>=10.0
+trimesh>=4.0
+# optional: much faster ambient-occlusion bake (trimesh falls back to its pure-python ray engine without it)
+embreex>=2.17
