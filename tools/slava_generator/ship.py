@@ -44,6 +44,7 @@ def _font(path, size):
 
 
 NAME_H = 1.2          # letter band height of the ship's name on the hull (m)
+PENNANT_B = 60.0      # hull number centre, metres aft of the bow (Moskva 2009-12 photos)
 
 
 def text_width_px(text, h, size_frac, spacing):
@@ -125,6 +126,61 @@ def paint_text(L, rect, text, fill, outline=None, stroke=0, size_frac=0.82,
     if outline is not None:
         L.mask_apply(m_out, col=outline, alpha=1.0, x0=x0, y0=y0)
     L.mask_apply(m_in, col=fill, alpha=1.0, add_height=0.3, x0=x0, y0=y0)
+    a = L.alpha[y0:y1, x0:x1]
+    L.alpha[y0:y1, x0:x1] = np.where(a > 0.45, 1.0, 0.0)
+
+
+# hull-number digits as strokes on a unit em (x right, y up from the baseline, height 1), in the style of the
+# Russian Navy pennant numbers on the 2009-12 photos: tall, light, a flag on the 1 and no foot
+def _arc(cx, cy, rx, ry, a0, a1, n=10):
+    return [(cx + rx * math.cos(math.radians(a0 + (a1 - a0) * k / n)), cy + ry * math.sin(math.radians(a0 + (a1 - a0) * k / n)))
+            for k in range(n + 1)]
+
+
+PENNANT_GLYPHS = {
+    '0': (0.62, [_arc(0.31, 0.72, 0.24, 0.24, 180, 0) + _arc(0.31, 0.28, 0.24, 0.24, 0, -180) + [(0.07, 0.72)]]),
+    '1': (0.42, [[(0.06, 0.8), (0.32, 1.0), (0.32, 0.0)]]),
+    '2': (0.62, [_arc(0.31, 0.72, 0.24, 0.24, 165, -15) + [(0.07, 0.0), (0.58, 0.0)]]),
+    '3': (0.62, [_arc(0.31, 0.75, 0.23, 0.21, 160, -90), _arc(0.31, 0.28, 0.25, 0.26, 90, -160)]),
+    '4': (0.62, [[(0.44, 0.0), (0.44, 1.0), (0.04, 0.32), (0.6, 0.32)]]),
+    '5': (0.62, [[(0.56, 1.0), (0.11, 1.0), (0.08, 0.56)] + _arc(0.31, 0.33, 0.26, 0.29, 135, -150)]),
+    '6': (0.62, [[(0.5, 0.95)] + _arc(0.31, 0.6, 0.24, 0.38, 70, 180) + _arc(0.31, 0.3, 0.24, 0.28, 180, 540)]),
+    '7': (0.6, [[(0.04, 1.0), (0.56, 1.0), (0.2, 0.0)]]),
+    '8': (0.62, [_arc(0.31, 0.76, 0.21, 0.22, -90, 270), _arc(0.31, 0.28, 0.25, 0.27, 90, 450)]),
+    '9': (0.62, [[(0.12, 0.05)] + _arc(0.31, 0.4, 0.24, 0.38, -110, 0) + _arc(0.31, 0.7, 0.24, 0.28, 0, 360)]),
+}
+PENNANT_STROKE, PENNANT_GAP = 0.17, 0.32      # stroke width and letter gap, in em
+
+
+def paint_pennant(L, rect, text, fill, outline=None):
+    """hull number filling the decal rect: digits drawn as strokes (any other character falls back to the
+    big font), the whole string scaled to the full height and centred."""
+    x0, y0, x1, y1 = rect
+    w, h = x1 - x0, y1 - y0
+    if not all(ch in PENNANT_GLYPHS for ch in text):
+        return paint_text(L, rect, text, fill, outline=PAL['black'] * 1.3 if outline is None else outline, stroke=2,
+                          font_path=st.FONT_BIG, size_frac=0.98, spacing=6)
+    sw = PENNANT_STROKE
+    adv = sum(PENNANT_GLYPHS[ch][0] for ch in text) + PENNANT_GAP * (len(text) - 1)
+    em = min((h - 4) / (1.0 + sw), (w - 4) / (adv + sw))   # pixels per em, strokes included
+    ox = (w - adv * em) / 2
+    oy = (h + em) / 2
+
+    def draw(d, s, extra):
+        x = ox
+        lw = (sw + extra) * em * s
+        for ch in text:
+            gw, strokes = PENNANT_GLYPHS[ch]
+            for pl in strokes:
+                pts = [((x + px * em) * s, (oy - py * em) * s) for (px, py) in pl]
+                d.line(pts, fill=255, width=max(1, int(round(lw))), joint='curve')
+                for (qx, qy) in (pts[0], pts[-1]):
+                    d.rectangle([qx - lw / 2, qy - lw / 2, qx + lw / 2, qy + lw / 2], fill=255)
+            x += (gw + PENNANT_GAP) * em
+    L.rect(x0, y0, x1, y1, alpha=0.0, col=PAL['hull'])
+    if outline is not None:
+        L.mask_apply(L.draw_mask(w, h, lambda d, s: draw(d, s, 0.05)), col=outline, alpha=1.0, x0=x0, y0=y0)
+    L.mask_apply(L.draw_mask(w, h, lambda d, s: draw(d, s, 0.0)), col=fill, alpha=1.0, add_height=0.3, x0=x0, y0=y0)
     a = L.alpha[y0:y1, x0:x1]
     L.alpha[y0:y1, x0:x1] = np.where(a > 0.45, 1.0, 0.0)
 
@@ -388,9 +444,7 @@ def paint_top_dome(L, rect):
 
 def register_decals(m):
     D.register(m)
-    big = st.FONT_BIG
-    m.alloc('pennant', 448, 160, lambda L, r: paint_text(L, r, PENNANT, PAL['white'], outline=PAL['black'] * 1.3,
-                                                         stroke=2, font_path=big, size_frac=0.98, spacing=6))
+    m.alloc('pennant', 384, 176, lambda L, r: paint_pennant(L, r, PENNANT, PAL['white']))
     name_px = text_width_px(SHIP_NAME, 96, 0.78, 10) + 24
     m.name_w = NAME_H * name_px / 96.0
     m.alloc('name', name_px, 96, lambda L, r: paint_text(L, r, SHIP_NAME, PAL['white'], size_frac=0.78, spacing=10))
@@ -487,7 +541,7 @@ def hull_fittings(m):
         c.add(red, (P, N, np.zeros((len(P), 2)), I))
     # hull decals: pennant number, name, bow star
     for s in (1, -1):
-        hull_decal(c, 'pennant', 67.6, 3.55, 7.6, 3.3, s, nseg=4)
+        hull_decal(c, 'pennant', PENNANT_B, 3.55, 7.4, 3.4, s, nseg=6)
         hull_decal(c, 'name', 172.0 - m.name_w / 2, 2.85, m.name_w, NAME_H, s, nseg=8)
         for (name, Bc, yc, w, h) in (('star', 8.0, 9.3, 0.85, 0.85),):
             xs, ys = section(Bc, 64)
@@ -784,22 +838,43 @@ def mainmast(m):
         decal(c, 'louvre', P3(95.73, s * 2.2, 10.9), (0, 0, 1), 1.4, 2.2)
         decal(c, 'louvre', P3(95.73, s * 0.7, 10.9), (0, 0, 1), 1.0, 2.2)
         side_strip(c, 'PORTS', 97.0, 102.6, 4.87, 10.4, 1.0, sides=(s,))
-    # radome platforms at h 14.5 and Side Globe spheres
+    # lookout tubs at h 14.5 fore and aft of the radome stack: D-shaped floor, flared bulwark, top rail
     for s in (1, -1):
         for Bp in (97.0, 102.6):
             pts = [(Bp + 1.4 * math.cos(a), s * (4.3 + 1.4 * math.sin(a))) for a in np.linspace(-math.pi / 2, math.pi / 2, 7)]
             slab(c, pts if s > 0 else pts[::-1], 14.3, 14.55)
-            sphere_at(c, 'mid', P3(Bp, s * 5.0, 15.35), 0.78)
-        for (Bp, xp, yp) in ((98.9, 1.45, 20.3), (103.4, 1.45, 20.3)):
-            sphere_at(c, 'mid', P3(Bp, s * xp, yp), 0.72)
-        c.add(c.paint, beam(P3(98.9, s * 1.45, 19.5), P3(98.9, s * 1.45, 19.65), 0.3, 0.3))
-    # column with base and head flanges and a mid band, as one lathe (no buried vertices for the AO bake)
-    c.add(c.paint, lathe([(1.03, 19.5), (1.03, 19.62), (0.95, 19.62), (0.95, 24.05), (1.02, 24.05), (1.02, 24.15),
-                          (0.95, 24.15), (0.95, 25.42), (1.03, 25.42), (1.03, 25.6), (0.0, 25.6)], seg=18),
-          xf=M(P3(101.1, 0, 0)))
-    ladder(c, P3(100.15, 0, 19.6), P3(100.15, 0, 25.4), 0.45, normal=(0, 0, 1))
+            R_ = rot_y(math.pi / 2 if s > 0 else -math.pi / 2)
+            c.add(c.paint, lathe([(1.4, 0.0), (1.4, 0.15), (1.5, 1.05), (1.44, 1.1)], seg=8, arc=math.pi,
+                                 angle0=-math.pi / 2), xf=M(P3(Bp, s * 4.3, 14.3), R_))
+            arc = [P3(Bp + 1.52 * math.cos(a), s * (4.3 + 1.52 * math.sin(a)), 15.85) for a in np.linspace(-math.pi / 2, math.pi / 2, 9)]
+            c.add(c.paint, A.pipe(arc, 0.03, seg=4), occ=False)
+    # ECM radomes ("eggs"): four a side at B 99.8, stacked in two pairs with the long axis athwartships
+    # (Kuleshov sheets 1/2; heights and offsets solved from the 2009 and 2012 photos). The lower pair sits on
+    # stubs from the vertical wall; the upper pair hangs on a frame off the sloped face, the top egg on an
+    # arm from the roof beside the column
+    Be = 99.8
+    for s in (1, -1):
+        for (yc, xc) in ((19.85, 3.55), (17.75, 3.9), (13.8, 5.4), (11.75, 5.6)):
+            egg_radome(c, P3(Be, s * xc, yc), (s, 0.0, 0.0))
+            wall = 4.85 if yc < 12.3 else (4.4 if yc < 14.5 else max(1.5, 4.4 - (yc - 14.5) / 5.0 * 2.6))
+            x_in = xc - EGG_L / 2
+            if x_in - wall > 0.02:
+                c.add(c.paint, cylinder(0.26, x_in - wall + 0.1, seg=10), xf=M(P3(Be, s * (wall - 0.1), yc), rot_z(-s * math.pi / 2)))
+        for Bq in (Be - 1.05, Be + 1.05):          # frame posts for the upper pair, off the sloped face
+            x_post = 2.95
+            y_base = 14.5 + (4.4 - x_post) / 2.6 * 5.0
+            c.add(c.paint, box(0.16, 20.6 - y_base, 0.16, center=(0, (20.6 - y_base) / 2, 0)), xf=M(P3(Bq, s * x_post, y_base)))
+            for yc in (19.85, 17.75):
+                c.add(c.paint, beam(P3(Bq, s * x_post, yc), P3(Be + (Bq - Be) * 0.55, s * (x_post + 0.45), yc), 0.1, 0.1),
+                      occ=False)
+    # column tapering from 2.5 m at the roof to 1.6 m under the turntable (sheet 1), flanges at both ends
+    # and a mid band, as one lathe (no buried vertices for the AO bake)
+    c.add(c.paint, lathe([(1.32, 19.5), (1.32, 19.62), (1.24, 19.62), (1.07, 22.9), (1.12, 22.9), (1.12, 23.0),
+                          (1.06, 23.0), (0.82, 26.05), (0.9, 26.05), (0.9, 26.2), (0.0, 26.2)], seg=20),
+          xf=M(P3(101.2, 0, 0)))
+    ladder(c, P3(101.2 - 1.28, 0, 19.65), P3(101.2 - 0.86, 0, 26.0), 0.45, normal=(0, 0.25, 1))
     # Top Pair (MR-800 Voskhod), rotating on the column top
-    A.top_pair(c, P3(101.1, 0, 25.6))
+    A.top_pair(c, P3(101.2, 0, 26.2))
 
 
 # =============================================================================================
@@ -936,9 +1011,9 @@ def aft_superstructure(m):
     # Top Dome (3R41 Volna)
     D.top_dome(c, P3(152.4, 0, 14.8))
     b.node('Superstructure')
-    c.add(c.paint, tube_path([P3(154.1, 0, 14.8), P3(154.1, 0, 22.2)], 0.12, seg=6))
-    c.add(c.paint, beam(P3(154.1, -1.5, 20.0), P3(154.1, 1.5, 20.0), 0.1, 0.1))
-    c.add(c.paint, box(0.9, 0.8, 0.9, center=(0, 0, 0)), xf=M(P3(155.0, 0.0, 15.2)))
+    # signal mast beside the Top Dome (port side of the roof, clear of the radome)
+    c.add(c.paint, tube_path([P3(154.1, 2.15, 14.8), P3(154.1, 2.15, 22.6)], 0.12, seg=6))
+    c.add(c.paint, beam(P3(154.1, 1.1, 21.0), P3(154.1, 3.2, 21.0), 0.1, 0.1))
     # Pop Group directors (4R33), dishes face aft when stowed
     for s_, nm in ((1, 'PopGroup_P'), (-1, 'PopGroup_S')):
         D.pop_group(c, P3(156.1, s_ * 5.9, 9.7), s_, nm)

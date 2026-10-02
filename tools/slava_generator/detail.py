@@ -172,34 +172,73 @@ def pop_group(ctx, pos, side, name, parent='Superstructure'):
 # =============================================================================================
 # 3R41 "Top Dome" (S-300F guidance): spherical-cap radome + truncated cone front with a flat face
 # =============================================================================================
+TD_R, TD_RIM, TD_EL = 2.1, 2.25, math.radians(22.0)    # radome radius, rim flange radius, housing depression
+TD_L, TD_A0, TD_A1 = 2.7, 2.1, 1.0                     # housing length, octagon apothem at the rim and at the face
+TD_C = (3.4, -0.6)                                     # radome centre above / forward of the turntable (m)
+
+
+def _octagon(c, u, v, apothem, phase=math.pi / 8):
+    """regular octagon (8 points) around c in the plane (u, v), a flat edge centred on +u."""
+    rc = apothem / math.cos(math.pi / 8)
+    return [c + rc * (math.cos(phase + k * math.pi / 4) * u + math.sin(phase + k * math.pi / 4) * v) for k in range(8)]
+
+
 def top_dome(ctx, pos, name='TopDome', parent='Superstructure'):
+    """3R41 Volna "Top Dome": a hemispherical radome looking aft and up, behind a faceted octagonal housing that
+    tapers forward and down to a flat end plate with an access door, on a pedestal with raking struts. The
+    layout (aft-looking dome, housing depressed 22 deg) follows Kuleshov sheet 1 and the Varyag (2017) close-up;
+    the size and height follow the Moskva 2009/2012 photos, where the dome top stands at about 20.3 m (the
+    1993 plan draws it 1.4 m lower and smaller). pos = turntable centre on the roof (B 152.4, h 14.8)."""
     b = ctx.b
     o = np.asarray(pos, float)
     b.push(name, parent=parent, translation=tuple(o))
     pt = ctx.paint
-    ctx.add(pt, cylinder(1.55, 0.45, seg=24), xf=M(o))
-    ctx.add(pt, rbox(2.5, 0.95, 2.6, r=0.25, seg=2, bevel=0.08, y0=0.45), xf=M(o + np.array([0, 0, -0.2])))
-    for s in (1, -1):
-        ctx.add(pt, rbox(0.4, 1.3, 1.2, r=0.08, seg=1, y0=1.2), xf=M(o + np.array([s * 1.05, 0, 0.0])))
-    el = math.radians(8)
-    d = np.array([0.0, math.sin(el), math.cos(el)])
-    Rax = axis_frame(d)
-    c0 = o + np.array([0, 3.15, -0.25])
-    Rr, cut = 2.3, 0.75
-    prof = []
-    for k in range(10):
-        th = math.acos(-cut / Rr) * k / 9.0
-        prof.append((Rr * math.sin(th), -Rr * math.cos(th)))
-    rc = math.sqrt(Rr * Rr - cut * cut)
-    prof_cone = [(rc, cut), (rc - 0.03, cut + 0.12), (1.3, cut + 2.05), (1.24, cut + 2.12)]
-    ctx.add(pt, lathe(prof, seg=28), xf=M(c0, Rax))
-    ctx.add(pt, lathe(prof_cone, seg=28), xf=M(c0, Rax))
-    ctx.add(pt, cylinder(rc + 0.07, 0.14, seg=28, caps=(False, False), y0=cut - 0.07), xf=M(c0, Rax))
-    # flat front face with the access hatch
-    fc = c0 + d * (cut + 2.12)
-    ctx.add(ctx.rect('td_face'), cylinder(1.24, 0.001, seg=24, caps=(False, True), cap_uv_rect=(0, 0, 1, 1)), xf=M(fc, Rax))
-    # small auxiliary radome on the base, vent mast behind
-    ctx.add(ctx.sw('radome'), sphere(0.42, seg=12, rings=6), xf=M(o + np.array([-1.35, 1.75, 1.0])))
+    a = np.array([0.0, -math.sin(TD_EL), math.cos(TD_EL)])             # housing axis: forward and down
+    up = np.array([0.0, math.cos(TD_EL), math.sin(TD_EL)])             # perpendicular to it, upward
+    side = np.array([1.0, 0.0, 0.0])
+    c0 = o + np.array([0.0, TD_C[0], TD_C[1]])                         # radome centre = rim plane centre
+    # turntable, pedestal under the housing (its flat bottom facet lies about 1.45 m above the roof) and two
+    # raking side struts
+    ctx.add(pt, lathe([(1.5, 0.0), (1.5, 0.18), (1.42, 0.25), (1.2, 0.25)], seg=24), xf=M(o))
+    ctx.add(pt, rbox(1.3, 1.35, 2.1, r=0.2, seg=2, bevel=0.06, y0=0.2), xf=M(o + np.array([0, 0, 0.2])))
+    for sx in (1, -1):
+        foot = o + np.array([sx * 1.15, 0.25, -0.5])
+        head = c0 + a * 1.1 - up * (TD_A0 - 0.45) + side * sx * 0.75
+        ctx.add(pt, taper_beam(foot, head, 0.16, 0.22, 0.12, 0.16, cham=0.2))
+    # radome: hemisphere on the aft side of the rim plane, with a flange ring at the rim
+    ctx.add(pt, lathe([(TD_R * math.cos(t), TD_R * math.sin(t)) for t in np.linspace(0.0, math.pi / 2, 9)], seg=32),
+            xf=M(c0, axis_frame(-a)))
+    ctx.add(pt, lathe([(TD_R - 0.02, -0.08), (TD_RIM, -0.08), (TD_RIM, 0.08), (TD_R - 0.02, 0.08)], seg=32),
+            xf=M(c0, axis_frame(-a)))
+    # faceted housing (flat top facet), seam ring near the rim, flat octagonal end plate
+    ring0 = _octagon(c0 + a * 0.08, up, side, TD_A0)
+    ring1 = _octagon(c0 + a * 0.3, up, side, TD_A0 - 0.06)
+    ring2 = _octagon(c0 + a * TD_L, up, side, TD_A1)
+    polys = []
+    for (ra, rb) in ((ring0, ring1), (ring1, ring2)):
+        for k in range(8):
+            j = (k + 1) % 8
+            polys.append([ra[k], ra[j], rb[j], rb[k]])
+    P, N, UV, I = flat_poly_faces(polys)
+    P, N, I = orient_outward(P, N, I, c0 + a * (TD_L / 2))
+    ctx.add(pt, (P, N, UV, I))
+    fc = c0 + a * TD_L
+    face = _octagon(fc + a * 0.002, up, side, TD_A1)
+    rc = TD_A1 / math.cos(math.pi / 8)
+    Pf = np.array([fc + a * 0.002] + face)
+    UVf = np.array([(0.5 + np.dot(q - fc, side) / (2 * rc), 0.5 - np.dot(q - fc, up) / (2 * rc)) for q in Pf])
+    If = np.array([[0, 1 + k, 1 + (k + 1) % 8] for k in range(8)])
+    Nf = np.tile(a, (len(Pf), 1))
+    fn = np.cross(Pf[If[:, 1]] - Pf[If[:, 0]], Pf[If[:, 2]] - Pf[If[:, 0]])
+    if np.dot(fn[0], a) < 0:
+        If = If[:, ::-1]
+    ctx.add(ctx.rect('td_face'), (Pf, Nf, UVf, If))
+    # small auxiliary radome on the aft edge of the roof, looking aft and up
+    ax = normalize(np.array([0.0, 0.55, -1.0]))
+    ac = o + np.array([0.0, 0.5, -2.45])
+    ctx.add(pt, cylinder(0.3, 0.5, seg=12), xf=M(o + np.array([0.0, 0.0, -2.45])))
+    ctx.add(ctx.sw('radome'), lathe([(0.42, -0.35), (0.42, 0.1)] + [(0.42 * math.cos(t), 0.1 + 0.42 * math.sin(t))
+                                     for t in np.linspace(0.3, math.pi / 2, 5)], seg=14), xf=M(ac, axis_frame(ax)))
     b.pop()
 
 
@@ -207,21 +246,28 @@ def top_dome(ctx, pos, name='TopDome', parent='Superstructure'):
 # atlas painters for the detail pass
 # =============================================================================================
 def paint_td_face(L, rect):
-    """Top Dome front face: grey disc, rim, rectangular access hatch with a red mark."""
+    """Top Dome end plate (octagon, a flat edge at the top): raised rim and a tall access door with a red mark,
+    set to one side as on the Varyag close-up."""
     x0, y0, x1, y1 = rect
     w, h = x1 - x0, y1 - y0
     PAL = st.PAL
     L.rect(x0, y0, x1, y1, col=PAL['super'] * 1.02, alpha=1.0)
+    rc = 0.5 * w
+
+    def octo(f):
+        return [(w / 2 + f * rc * math.cos(math.pi / 8 + k * math.pi / 4), h / 2 + f * rc * math.sin(math.pi / 8 + k * math.pi / 4))
+                for k in range(8)]
 
     def rim(d, s):
-        d.ellipse([2 * s, 2 * s, (w - 2) * s, (h - 2) * s], outline=255, width=3 * s)
+        pts = [(x * s, y * s) for (x, y) in octo(0.93)]
+        d.line(pts + pts[:1], fill=255, width=3 * s)
 
     def hatch(d, s):
-        d.rounded_rectangle([0.36 * w * s, 0.18 * h * s, 0.66 * w * s, 0.8 * h * s], radius=int(0.05 * w * s),
+        d.rounded_rectangle([0.44 * w * s, 0.2 * h * s, 0.72 * w * s, 0.84 * h * s], radius=int(0.05 * w * s),
                             outline=255, width=2 * s)
     L.mask_apply(L.draw_mask(w, h, rim), col=PAL['super'] * 0.7, add_height=0.6, x0=x0, y0=y0)
     L.mask_apply(L.draw_mask(w, h, hatch), col=PAL['super'] * 0.6, add_height=0.8, x0=x0, y0=y0)
-    L.rect(x0 + 0.47 * w, y0 + 0.28 * h, x0 + 0.53 * w, y0 + 0.33 * h, col=PAL['flagred'])
+    L.rect(x0 + 0.56 * w, y0 + 0.4 * h, x0 + 0.61 * w, y0 + 0.45 * h, col=PAL['flagred'])
 
 
 def register(m):

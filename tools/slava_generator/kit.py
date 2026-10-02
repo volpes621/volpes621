@@ -353,6 +353,23 @@ def sphere_at(ctx, sw, c, r, seg=12, rings=6, node=None):
 # ------------------------------------------------------------------------------------------ equipment
 
 
+# ECM radome "egg": length along its axis, diameter; fuller at the mounting end, slightly pointed outboard
+EGG_L, EGG_D = 2.4, 1.8
+
+
+def egg_radome(ctx, centre, axis, node=None):
+    """egg-shaped radome centred at `centre`, its long axis along `axis` (pointing away from the mounting)."""
+    prof = []
+    for t in np.linspace(0.0, math.pi, 11):
+        prof.append((EGG_D / 2 * math.sin(t) * (1.0 + 0.1 * math.cos(t)) / 1.0, -EGG_L / 2 * math.cos(t)))
+    prof[0] = (0.0, prof[0][1]); prof[-1] = (0.0, prof[-1][1])
+    d = normalize(np.asarray(axis, float))
+    R = frame_from_dir(d) @ rot_x(math.pi / 2)
+    ctx.add(ctx.paint, lathe(prof, seg=16), xf=M(np.asarray(centre, float), R), node=node)
+    ctx.add(ctx.paint, lathe([(0.34, -0.06), (0.4, 0.0), (0.4, 0.1), (0.34, 0.16)], seg=12),
+            xf=M(np.asarray(centre, float) - d * (EGG_L / 2 + 0.02), R), node=node)
+
+
 # liferaft canister profile (r, y): domed ends whose profile turns stay under the lathe's 40 deg crease
 # limit, so the shading runs smoothly round the ends without extra segments
 RAFT_PROF = [(0.0, -0.68), (0.19, -0.611), (0.3, -0.454), (0.3, 0.454), (0.19, 0.611), (0.0, 0.68)]
