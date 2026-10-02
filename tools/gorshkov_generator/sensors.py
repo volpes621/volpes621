@@ -60,9 +60,9 @@ def furke4(c, base, yaw=0.0, node='Furke4'):
     c.b.node(node, parent='Sensors', translation=o)        # rotating part, pivot on the turntable axis
     R = rot_y(yaw)
     c.add(c.sw('mid'), cylinder(0.95, 0.2, seg=20, caps=(True, True), y0=0.7), xf=M(o))
-    tilt = math.radians(14.0)
+    tilt = math.radians(11.0)
     Rt = R @ rot_x(-tilt)
-    w, h, d = 3.3, 3.0, 1.5
+    w, h, d = 3.3, 3.0, 2.1
     piv = o + np.array([0, 0.9, 0])
     # plan section of the housing: flat front, rounded back
     sec = []

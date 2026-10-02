@@ -74,7 +74,7 @@ FLARE = P1D([0, 15, 30, 50, 60, LOA], [1.6, 1.5, 1.3, 1.1, 1.0, 1.0])
 # top of the upper hull: forecastle bulwark, UKSK block, 01 deck, hangar, the Palash wells at the hangar's
 # aft corners; none over the helideck
 BULWARK_TOP = P1D([0.0, 10, 25, 35, 44.5], [STEM_TOP_Y, 7.9, 7.85, 7.88, 8.0])
-PALASH_WELL = (108.8, 9.9, 4.4)        # well from B 108.8 aft, floor height, inboard edge |x|
+PALASH_WELL = (108.3, 9.9, 2.5)        # well from B 108.3 aft, floor height, inboard edge |x|
 UPPER = ((0.0, 44.5, 'bulwark'), (44.5, 61.0, 8.1), (61.0, 99.0, 10.0), (99.0, PALASH_WELL[0], 12.2),
          (PALASH_WELL[0], 113.9, PALASH_WELL[1]))
 HELIDECK_B = 113.9

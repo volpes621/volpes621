@@ -69,12 +69,13 @@ PAL = {
     'heli': srgb('3f4446'),
     'mesh': srgb('6e7a82'),
     'wood': srgb('5a4636'),        # bridge-wing decking
+    'tan': srgb('a8936a'),         # cloth boot round the 130 mm barrel
 }
 
 # swatch grid in RECT area: 32x32 cells starting at (0, 2016) going right
 SWATCH_ORDER = ['hull', 'super', 'deck', 'deck_red', 'red', 'boot', 'black', 'dark', 'mid', 'light', 'white',
                 'glass', 'rubber', 'orange', 'brass', 'bronze', 'steel', 'radome', 'canvas', 'blue', 'flagred', 'green',
-                'heli', 'mesh', 'wood']
+                'heli', 'mesh', 'wood', 'tan']
 SWATCH_Y0 = 2016
 SWATCH = 32
 
@@ -254,47 +255,65 @@ def apply_grime(L, x0, y0, x1, y1, seed, amount=0.07, scale=40):
     L.col[y0:y1, x0:x1] *= (1.0 - amount + 2 * amount * n)[..., None]
 
 
-def make_tile_paint(size=1024, seed=3, base=None, repeat_m=12.0):
-    """Tileable paint: subtle mottling, faint plate seams (every 3 m x 2 m), weld lines."""
+def make_tile_paint(size=2048, seed=3, base=None, repeat_m=12.0):
+    """Tileable paint: subtle mottling, a slightly different tone on every 3 m x 2 m plate, raised weld
+    seams between the plates (as photographed on Admiral Golovko's bow), faint run-down streaks."""
     base = PAL['super'] if base is None else base
     L = Layers(size, size, base=base, rough=0.62, metal=0.12)
-    n1 = value_noise(size, size, 128, seed=seed, octaves=5)
-    n2 = value_noise(size, size, 16, seed=seed + 7, octaves=3)
+    k = size / 1024.0
+    n1 = value_noise(size, size, 128 * k, seed=seed, octaves=5)
+    n2 = value_noise(size, size, 16 * k, seed=seed + 7, octaves=3)
     L.col *= (0.93 + 0.10 * n1 + 0.03 * n2)[..., None]
     L.rough = 0.55 + 0.15 * n1
     px_per_m = size / repeat_m
-    # plate seams (raised weld beads)
-    for i in range(int(repeat_m / 3.0)):
-        x = int(i * 3.0 * px_per_m)
-        L.rect(x, 0, x + 2, size, add_height=0.5, col=None)
-    for j in range(int(repeat_m / 2.0)):
-        y = int(j * 2.0 * px_per_m)
-        L.rect(0, y, size, y + 2, add_height=0.5)
+    nx, ny = int(repeat_m / 3.0), int(repeat_m / 2.0)
+    pw, ph = int(round(3.0 * px_per_m)), int(round(2.0 * px_per_m))
+    rng = np.random.default_rng(seed + 11)
+    for i in range(nx):                                    # plate-to-plate tone differences
+        for j in range(ny):
+            L.col[j * ph:(j + 1) * ph, i * pw:(i + 1) * pw] *= 1.0 + rng.uniform(-0.016, 0.016)
+    bead = max(2, int(round(0.022 * px_per_m)))            # weld beads, about 2 cm wide
+    for i in range(nx):
+        x = i * pw
+        L.rect(x, 0, x + bead, size, add_height=0.9)
+        L.col[:, x:x + bead] *= 0.975
+    for j in range(ny):
+        y = j * ph
+        L.rect(0, y, size, y + bead, add_height=0.9)
+        L.col[y:y + bead, :] *= 0.975
     # faint vertical run-down streaks
     rng = np.random.default_rng(seed)
-    for k in range(40):
+    for _ in range(int(40 * k * k)):
         x = rng.integers(0, size)
         y = rng.integers(0, size)
-        ln = rng.integers(20, 160)
-        w = rng.integers(1, 3)
+        ln = int(rng.integers(20, 160) * k)
+        w = int(rng.integers(1, 3) * k)
         a = rng.uniform(0.02, 0.06)
         yy = np.arange(y, y + ln) % size
         L.col[yy, x:x + w] *= (1 - a)
     return L
 
 
-def make_tile_deck(size=512, seed=5, base=None, repeat_m=6.0):
+def make_tile_deck(size=1024, seed=5, base=None, repeat_m=6.0):
+    """Tileable non-skid deck: coarse grit (2 x 2 px grains), deck-plate seams every 1.5 m x 3 m."""
     base = PAL['deck'] if base is None else base
     L = Layers(size, size, base=base, rough=0.85, metal=0.02)
-    n1 = value_noise(size, size, 64, seed=seed, octaves=5)
+    k = size / 512.0
+    n1 = value_noise(size, size, 64 * k, seed=seed, octaves=5)
     rng = np.random.default_rng(seed)
-    grit = rng.random((size, size))
+    g = max(1, int(k))
+    grit = np.kron(rng.random((size // g, size // g)), np.ones((g, g)))
     L.col *= (0.88 + 0.16 * n1 + 0.06 * (grit - 0.5))[..., None]
     L.height = grit * 0.6
     px_per_m = size / repeat_m
     for i in range(int(repeat_m / 1.5)):
         x = int(i * 1.5 * px_per_m)
-        L.rect(x, 0, x + 1, size, add_height=-0.6)
+        L.rect(x, 0, x + g, size, add_height=-0.6)
+        L.col[:, x:x + g] *= 0.92
+    for j in range(int(repeat_m / 3.0)):
+        y = int(j * 3.0 * px_per_m)
+        L.rect(0, y, size, y + g, add_height=-0.6)
+        L.col[y:y + g, :] *= 0.92
     return L
 
 

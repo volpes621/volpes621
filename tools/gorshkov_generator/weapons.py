@@ -41,13 +41,20 @@ def loft_solid(c, uvs, rings, node=None):
 # =============================================================================================
 # A-192M "Armat" 130 mm gun
 # =============================================================================================
-# turret outline (plan, local: x port, z forward) and profile (from the drawing and photos):
-# chamfered nose, sides leaning in, flat top, vertical back; base ring under it.
-GUN_L = (-2.35, 2.05)      # turret rear / front z (local, about the training axis)
-GUN_HW = 1.85              # half-width at the base of the housing
-GUN_H0, GUN_H1 = 0.6, 3.25    # housing bottom / top above the deck
-GUN_AXIS_Y = 2.2           # trunnion height above the deck
-GUN_BARREL = 6.9           # barrel length ahead of the mantlet
+# turret (local: z forward of the training axis, x port, y above the deck), from the 1:500 plan and profile
+# and the 2018 aerial photograph: wedge nose sloping up to a flat roof, slab sides leaning in, a vertical
+# back with chamfered corners; the deck shield is a perforated ring open astern.
+GUN_RINGS = (            # (y, nose z, nose half-width, front corner z, half-width, rear corner z, rear z, rear hw)
+    (0.62, 2.55, 0.55, 1.45, 1.85, -2.3, -3.0, 1.1),
+    (1.5, 2.15, 0.6, 1.15, 1.84, -2.3, -3.0, 1.1),
+    (2.25, 1.7, 0.68, 0.85, 1.78, -2.3, -3.0, 1.09),
+    (2.65, 1.52, 0.72, 0.62, 1.72, -2.28, -2.98, 1.08),
+    (3.42, 0.2, 0.92, -0.18, 1.52, -2.22, -2.85, 1.0),
+    (3.7, -0.35, 1.0, -0.6, 1.34, -1.85, -2.42, 0.88),
+)
+GUN_AXIS = (0.3, 2.45)     # trunnions: z, height above the deck
+GUN_BARREL = 7.15          # trunnion to muzzle
+SHIELD = (3.55, 1.35, 35.0)   # deck shield ring: radius, height, half-angle of the opening astern
 
 
 def a192m(c, Bc, ydeck, train=0.0, node='A192M'):
@@ -56,183 +63,258 @@ def a192m(c, Bc, ydeck, train=0.0, node='A192M'):
 
     def W(p):
         return o + R @ np.asarray(p, float)
-    # deck shield: low cylindrical wall round the mount, open over the aft quarter
-    rr, hh = 2.95, 0.78
-    n = 28
-    a0, a1 = math.radians(-58), math.radians(238)          # opening astern (angle from +x toward +z)
-    pts = [(rr * math.cos(a0 + (a1 - a0) * k / n), rr * math.sin(a0 + (a1 - a0) * k / n)) for k in range(n + 1)]
-    for t, s in ((0.0, 1), (0.08, -1)):
+    # deck shield: perforated double wall round the mount, open astern, rim tube on top, end posts
+    rr, hh, op = SHIELD
+    n = 40
+    a0, a1 = math.radians(-90 + op), math.radians(270 - op)   # angle from +x toward +z (forward)
+    ang = [a0 + (a1 - a0) * k / n for k in range(n + 1)]
+    for t, s in ((0.0, 1), (0.07, -1)):
         r_ = rr - t
-        P, Nn = [], []
-        for (px, pz) in pts:
-            d = np.array([px, 0, pz]) / rr
-            for yy in (0.0, hh):
+        P, Nn, UV = [], [], []
+        for k, aa in enumerate(ang):
+            d = np.array([math.cos(aa), 0, math.sin(aa)])
+            for j, yy in enumerate((0.0, hh)):
                 P.append(o + d * r_ + np.array([0, yy, 0]))
                 Nn.append(d * s)
+                UV.append((rr * (aa - a0), 1.0 - j))
         P = np.array(P); Nn = np.array(Nn)
         I = []
         for k in range(n):
-            a = 2 * k
-            I += [(a, a + 2, a + 3), (a, a + 3, a + 1)]
+            q = 2 * k
+            I += [(q, q + 2, q + 3), (q, q + 3, q + 1)]
         I = np.array(I)
         fn = np.cross(P[I[0, 1]] - P[I[0, 0]], P[I[0, 2]] - P[I[0, 0]])
         if np.dot(fn, Nn[I[0, 0]]) < 0:
             I = I[:, ::-1]
-        c.add(c.paint, (P, Nn, np.stack([np.arange(len(P)) * 0.2, P[:, 1]], axis=1), I))
-    rim = [o + np.array([px, hh, pz]) for (px, pz) in pts]
-    c.add(c.paint, pipe(rim, 0.06, seg=4))
+        c.add(c.band('PERF', st.PERF_REPEAT_M), (P, Nn, np.array(UV), I))
+    rim = [o + np.array([math.cos(aa) * (rr - 0.035), hh, math.sin(aa) * (rr - 0.035)]) for aa in ang]
+    c.add(c.paint, pipe(rim, 0.055, seg=6))
+    for aa in (a0, a1):
+        d = np.array([math.cos(aa), 0, math.sin(aa)])
+        c.add(c.paint, box(0.1, hh, 0.14, center=(0, hh / 2, 0)), xf=M(o + d * (rr - 0.035), rot_y(math.atan2(d[0], d[2]))))
+    for k in range(4, n, 6):                               # stiffeners inside the ring
+        d = np.array([math.cos(ang[k]), 0, math.sin(ang[k])])
+        c.add(c.paint, box(0.05, hh * 0.9, 0.22, center=(0, hh * 0.45, -0.11)), xf=M(o + d * (rr - 0.07),
+                                                                                       rot_y(math.atan2(d[0], d[2]))))
     # rotating base and the turret housing (node pivot on the training axis)
     c.b.node(node, parent='Weapons', translation=o)
-    c.add(c.sw('mid'), cylinder(1.75, GUN_H0, seg=24, caps=(False, True)), xf=M(o))
-    zr, zf = GUN_L
-    hw0, hw1 = GUN_HW, GUN_HW - 0.42
-    nose = 0.95                                            # nose chamfer (plan)
-    y0, y1 = GUN_H0, GUN_H1
+    c.add(c.sw('mid'), cylinder(1.95, 0.62, seg=32, caps=(False, True)), xf=M(o))
+    c.add(c.sw('dark'), cylinder(2.02, 0.08, seg=32, caps=(False, True), y0=0.54), xf=M(o))
 
-    def ring(y, hw, zf_, zr_, ch):
-        return [W((hw, y, zr_ + 0.25)), W((hw - 0.25, y, zr_)), W((-hw + 0.25, y, zr_)), W((-hw, y, zr_ + 0.25)),
-                W((-hw, y, zf_ - ch)), W((-hw + ch * 0.75, y, zf_)), W((hw - ch * 0.75, y, zf_)), W((hw, y, zf_ - ch))]
-    lo = ring(y0, hw0, zf, zr, nose)
-    mid = ring(y0 + 1.6, hw0 - 0.18, zf - 0.35, zr, nose)
-    top = ring(y1, hw1, zf - 1.55, zr + 0.1, 0.55)
-    loft_solid(c, c.paint, [lo, mid, top])
-    # mantlet (embrasure) and the barrel with its thicker breech end and a thin muzzle collar
+    def ring(y, zn, hn, zc, hc, zrc, zr, hr):
+        return [W((hn, y, zn)), W((hc, y, zc)), W((hc, y, zrc)), W((hr, y, zr)),
+                W((-hr, y, zr)), W((-hc, y, zrc)), W((-hc, y, zc)), W((-hn, y, zn))]
+    loft_solid(c, c.paint, [ring(*g) for g in GUN_RINGS])
+    # embrasure: dark recess on the steep face round the barrel (the cloth boot covers its middle)
+    (ya, za), (yb, zb) = (GUN_RINGS[2][0], GUN_RINGS[2][1]), (GUN_RINGS[3][0], GUN_RINGS[3][1])
+    phi = math.atan2(za - zb, yb - ya)
+    nf = R @ np.array([0.0, math.sin(phi), math.cos(phi)])
+    emb = W((0.0, (ya + yb) / 2, (za + zb) / 2)) + nf * 0.012
+    c.add(c.sw('black'), box(1.1, (yb - ya) / math.cos(phi) * 0.95, 0.02, center=(0, 0, 0)), xf=M(emb, R @ rot_x(-phi)))
+    # roof: hatch, sight, vents; rear: ladder rungs and a door outline
+    y1 = GUN_RINGS[-1][0]
+    c.add(c.sw('mid'), rbox(0.7, 0.07, 0.8, r=0.12, seg=1), xf=M(W((0.62, y1, -1.3)), R))
+    c.add(c.sw('mid'), rbox(0.42, 0.25, 0.5, r=0.06, seg=1, bevel=0.03), xf=M(W((-0.65, y1, -0.9)), R))
+    c.add(c.sw('glass'), box(0.3, 0.14, 0.03, center=(0, 0, 0)), xf=M(W((-0.65, y1 + 0.15, -0.64)), R))
+    for x in (0.0, -0.6):
+        c.add(c.sw('mid'), cylinder(0.11, 0.12, seg=8), xf=M(W((x + 0.3, y1, -2.05))))
+    for k in range(5):
+        c.add(c.sw('dark'), box(0.45, 0.04, 0.05, center=(0, 0, 0)), xf=M(W((0.9, 0.95 + k * 0.42, -3.03)), R))
+    c.add(c.sw('mid'), box(0.8, 1.5, 0.02, center=(0, 0, 0)), xf=M(W((-0.55, 1.55, -3.005)), R))
+    for sx in (1, -1):                                         # side hatches
+        c.add(c.paint, cylinder(0.42, 0.03, seg=16, caps=(True, False)),
+              xf=M(W((sx * 1.86, 1.55, -1.2)), R @ rot_z(-sx * math.pi / 2)))
+        c.add(c.sw('dark'), cylinder(0.43, 0.035, seg=16, caps=(False, False)),
+              xf=M(W((sx * 1.855, 1.55, -1.2)), R @ rot_z(-sx * math.pi / 2)))
+    # elevating mass: boot and barrel (child node, pivot on the trunnions)
     elev = math.radians(3.0)
-    Rb = R @ rot_x(-elev)
-    pz = zf - 0.55
-    piv = W((0.0, GUN_AXIS_Y, pz))
-    dirv = R @ np.array([0.0, math.sin(elev), math.cos(elev)])
-    # sighting port and access hatch on the roof, ladder rungs at the back
-    c.add(c.sw('dark'), box(0.5, 0.06, 0.7, center=(0, 0, 0)), xf=M(W((0.75, y1 + 0.02, zr + 1.0)), R))
-    c.add(c.sw('glass'), box(0.42, 0.22, 0.05, center=(0, 0, 0)), xf=M(W((-1.05, y1 - 0.25, zf - 1.45)), R @ rot_x(-0.5)))
-    for k in range(4):
-        c.add(c.sw('dark'), box(0.45, 0.04, 0.05, center=(0, 0, 0)), xf=M(W((0.8, y0 + 0.35 + k * 0.4, zr - 0.04)), R))
-    # elevating mass: mantlet and barrel (child node, pivot on the trunnions)
+    piv = W((0.0, GUN_AXIS[1], GUN_AXIS[0]))
     c.b.node(node + '_Gun', parent=node, translation=piv)
-    c.add(c.paint, rbox(0.95, 0.85, 0.9, r=0.18, seg=2, y0=-0.42), xf=M(piv, Rb @ rot_x(math.pi / 2)))
-    prof = [(0.0, 0.0), (0.27, 0.0), (0.27, 0.6), (0.2, 0.9), (0.17, 2.2), (0.135, 4.4), (0.12, GUN_BARREL - 0.35),
-            (0.15, GUN_BARREL - 0.3), (0.15, GUN_BARREL - 0.05), (0.11, GUN_BARREL), (0.0, GUN_BARREL)]
-    c.add(c.paint, lathe(prof, seg=12), xf=M(piv + dirv * 0.4, axis_frame(dirv)))
+    dirv = R @ np.array([0.0, math.sin(elev), math.cos(elev)])
+    Rg = R @ rot_x(-elev)
+    c.add(c.sw('tan'), rbox(0.78, 0.62, 0.5, r=0.12, seg=2, y0=-0.31), xf=M(piv + dirv * 1.2, Rg))
+    c.add(c.sw('tan'), lathe([(0.0, 1.4), (0.3, 1.4), (0.27, 1.6), (0.21, 1.78), (0.0, 1.8)], seg=14),
+          xf=M(piv, axis_frame(dirv)))
+    L = GUN_BARREL
+    prof = [(0.0, 1.5), (0.21, 1.5), (0.2, 2.6), (0.17, 3.6), (0.2, 3.75), (0.2, 4.55), (0.165, 4.7), (0.15, L - 0.32),
+            (0.165, L - 0.28), (0.165, L - 0.04), (0.12, L), (0.0, L)]
+    c.add(c.paint, lathe(prof, seg=14), xf=M(piv, axis_frame(dirv)))
 
 
 # =============================================================================================
 # vertical launchers
 # =============================================================================================
-REDUT_MOD = (2.7, 4.2, 0.42)     # module footprint across, along, height above the deck
+REDUT_MOD = (2.75, 4.2, 0.38)    # module footprint across, along, height above the deck (1:500 plan)
+REDUT_LID = (1.22, 0.96, 0.07)   # lid across, along, thickness
 
 
 def redut_module(c, Bc, xc, ydeck):
-    """one 8-cell Redut launcher module: low raised box with bevelled edges, 2 x 4 square lids on top."""
+    """one 8-cell Redut module: low box with bevelled edges, deck plate with seams, 2 rows x 4 raised lids,
+    each row hinged along the module's long outer edge with a line of hinge knuckles (2018 photograph)."""
     w, l, h = REDUT_MOD
     o = P3(Bc, xc, ydeck)
-    c.add(c.paint, rbox(w, h, l, r=0.08, seg=1, bevel=0.12, bottom=False), xf=M(o))
-    top = o + np.array([0, h + 0.005, 0])
-    hw, hl = w / 2 - 0.13, l / 2 - 0.13
+    c.add(c.paint, rbox(w, h, l, r=0.08, seg=1, bevel=0.1, bottom=False), xf=M(o))
+    top = o + np.array([0, h + 0.004, 0])
+    hw, hl = w / 2 - 0.1, l / 2 - 0.1
     c.add(c.rect('redut_top'), _quad(top + np.array([-hw, 0, -hl]), top + np.array([hw, 0, -hl]),
                                       top + np.array([hw, 0, hl]), top + np.array([-hw, 0, hl]),
                                       uv=[(0, 1), (1, 1), (1, 0), (0, 0)], n=(0, 1, 0)))
+    lw, ll, lt = REDUT_LID
+    for sx in (-1, 1):
+        xl = sx * (lw / 2 + 0.04)
+        for j in range(4):
+            zl = (j - 1.5) * (ll + 0.06)
+            c.add(c.paint, rbox(lw, lt, ll, r=0.05, seg=1, bevel=0.025), xf=M(top + np.array([xl, 0.0, zl])))
+            for k in (-0.3, 0.0, 0.3):                         # hinge knuckles on the outer edge
+                p = top + np.array([sx * (lw + 0.07), 0.045, zl + k * ll])
+                c.add(c.sw('mid'), cylinder(0.045, 0.16, seg=8, caps=(True, True), y0=-0.08), xf=M(p, rot_x(math.pi / 2)))
 
 
 def paint_redut_top(L, rect):
-    """2 x 4 square cell lids with hinge bars and drain slots (u across, v along the ship)."""
+    """deck plate of a Redut module under the lids: seams, drain slots and the lid footprints in shadow."""
     x0, y0, x1, y1 = rect
     w, h = x1 - x0, y1 - y0
-    L.rect(x0, y0, x1, y1, col=PAL['super'] * 0.8, alpha=1.0, rough=0.55)
+    L.rect(x0, y0, x1, y1, col=PAL['super'] * 0.72, alpha=1.0, rough=0.55)
     for i in range(2):
         for j in range(4):
-            a = x0 + w * (0.04 + 0.48 * i); b = a + w * 0.44
-            cc = y0 + h * (0.03 + 0.2425 * j); d = cc + h * 0.215
-            L.rect(a - 1, cc - 1, b + 1, d + 1, col=PAL['super'] * 0.55, add_height=-0.8)
-            L.rect(a + 1, cc + 1, b - 1, d - 1, col=PAL['super'] * 0.93, add_height=0.5)
-            L.rect(a + 3, cc + 2, a + 6, d - 2, col=PAL['super'] * 0.75, add_height=0.8)      # hinge bar
-            L.rect((a + b) / 2 - 2, (cc + d) / 2 - 2, (a + b) / 2 + 2, (cc + d) / 2 + 2, col=PAL['dark'])
+            a = x0 + w * (0.03 + 0.49 * i); b = a + w * 0.45
+            cc = y0 + h * (0.025 + 0.2425 * j); d = cc + h * 0.22
+            L.rect(a - 1, cc - 1, b + 1, d + 1, col=PAL['super'] * 0.45, add_height=-0.8)
+    L.rect(x0 + w * 0.495, y0, x0 + w * 0.505, y1, col=PAL['dark'], add_height=-0.6)
 
 
 def uksk_field(c, B0, B1, hw, ytop):
-    """UKSK 3S14: two 8-cell modules side by side, flush lids slightly proud of the deck."""
+    """UKSK 3S14: two 8-cell modules in line (seam across the ship), flush lids slightly proud of the
+    deck; each module's forward row is hinged at its forward edge, the aft row at its aft edge (plan)."""
     yl = ytop + 0.055
     a = P3(B0, hw, yl); b = P3(B0, -hw, yl); cc = P3(B1, -hw, yl); d = P3(B1, hw, yl)
     c.add(c.paint, box(2 * hw + 0.2, 0.06, B1 - B0 + 0.2, center=(0, 0, 0)), xf=M(P3((B0 + B1) / 2, 0.0, ytop + 0.01)))
     c.add(c.rect('uksk_top'), _quad(d, a, b, cc, uv=[(0, 0), (0, 1), (1, 1), (1, 0)], n=(0, 1, 0)))
+    Bm = (B0 + B1) / 2
+    for Bh in (B0 + 0.12, Bm - 0.17, Bm + 0.17, B1 - 0.12):     # hinge bars with knuckles
+        c.add(c.sw('mid'), cylinder(0.035, 2 * hw - 0.3, seg=8, caps=(True, True), y0=-(hw - 0.15)),
+              xf=M(P3(Bh, 0.0, yl + 0.035), rot_z(math.pi / 2)))
+        for k in range(8):
+            xk = -hw + 0.3 + k * (2 * hw - 0.6) / 7
+            c.add(c.sw('mid'), cylinder(0.055, 0.14, seg=8, caps=(True, True), y0=-0.07),
+                  xf=M(P3(Bh, xk, yl + 0.035), rot_z(math.pi / 2)))
 
 
 def paint_uksk_top(L, rect):
-    """16 large square lids in 4 columns x 4 rows (u along the ship, v across), module seam on the centreline."""
+    """16 square lids: 4 rows along the ship (u) x 4 across (v); the two modules meet at u = 0.5."""
     x0, y0, x1, y1 = rect
     w, h = x1 - x0, y1 - y0
-    L.rect(x0, y0, x1, y1, col=PAL['deck_red'] * 0.95, alpha=1.0, rough=0.6)
+    L.rect(x0, y0, x1, y1, col=PAL['super'] * 0.8, alpha=1.0, rough=0.6)
     for i in range(4):
         for j in range(4):
-            a = x0 + w * (0.02 + 0.245 * i); b = a + w * 0.225
-            cc = y0 + h * (0.025 + 0.24 * j + (0.02 if j >= 2 else 0.0)); d = cc + h * 0.215
+            a = x0 + w * (0.03 + 0.235 * i + (0.03 if i >= 2 else 0.0)); b = a + w * 0.205
+            cc = y0 + h * (0.025 + 0.24 * j); d = cc + h * 0.215
             L.rect(a - 1, cc - 1, b + 1, d + 1, col=PAL['super'] * 0.5, add_height=-0.8)
-            L.rect(a + 1, cc + 1, b - 1, d - 1, col=PAL['deck_red'] * 1.12, add_height=0.4)
-            L.rect(a + 2, cc + 2, a + 5, d - 2, col=PAL['super'] * 0.72, add_height=0.8)
-            for k in (0.3, 0.7):
+            L.rect(a + 1, cc + 1, b - 1, d - 1, col=PAL['super'] * 0.93, add_height=0.4)
+            hx = a + 2 if i in (0, 2) else b - 5                 # hinge side of the lid
+            L.rect(hx, cc + 2, hx + 3, d - 2, col=PAL['super'] * 0.72, add_height=0.8)
+            for k in (0.3, 0.7):                                 # dogs on the free edge
                 yy = cc + (d - cc) * k
-                L.rect(b - 7, yy - 1, b - 3, yy + 1, col=PAL['dark'])
-    L.rect(x0, y0 + h * 0.5 - 1, x1, y0 + h * 0.5 + 1, col=PAL['super'] * 0.45, add_height=-0.6)
+                fx = b - 7 if i in (0, 2) else a + 3
+                L.rect(fx, yy - 1, fx + 4, yy + 1, col=PAL['dark'])
+    L.rect(x0 + w * 0.5 - 2, y0, x0 + w * 0.5 + 2, y1, col=PAL['super'] * 0.45, add_height=-0.6)
 
 
 # =============================================================================================
 # Palash CIWS
 # =============================================================================================
 def palash(c, pos, facing=0.0, node='Palash'):
-    """Palash: drum pedestal, low turret body, two six-barrel 30 mm guns on the sides of a central
-    cradle, radar / optronic head on top."""
+    """Palash: drum pedestal, rounded turret body, sensor head on a neck (radar face and optronic
+    windows), elevating cradle with a six-barrel 30 mm gun in a round housing on each side
+    (1:500 profile, museum model photographs)."""
     o = np.asarray(pos, float)
     c.b.node(node, parent='Weapons', translation=o)
     R = rot_y(facing) * 0.92            # whole mount scaled to the photographed height (about 2.2 m)
 
     def W(p):
         return o + R @ np.asarray(p, float)
-    c.add(c.paint, cylinder(0.97, 0.5, seg=20, caps=(False, True)), xf=M(o))
-    c.add(c.paint, rbox(2.1, 0.75, 2.2, r=0.35, seg=2, bevel=0.1, y0=0.5), xf=M(o, R))
-    # sensor head: radar box with an optronic window
-    hb = W((0.0, 2.05, -0.35))
-    c.add(c.paint, rbox(0.9, 0.55, 0.75, r=0.15, seg=2, bevel=0.06), xf=M(hb, R))
-    c.add(c.sw('glass'), box(0.4, 0.22, 0.05, center=(0, 0, 0)), xf=M(W((0.18, 2.32, 0.03)), R))
-    c.add(c.sw('dark'), box(0.55, 0.3, 0.04, center=(0, 0, 0)), xf=M(W((-0.15, 2.3, 0.03)), R))
-    # elevating cradle with the two six-barrel guns (child node, pivot on the elevation axis)
-    piv = W((0.0, 1.55, 0.15))
+    c.add(c.paint, lathe([(0.97, 0.0), (0.97, 0.38), (0.9, 0.45), (0.0, 0.47)], seg=24), xf=M(o))
+    c.add(c.sw('dark'), cylinder(0.99, 0.05, seg=24, caps=(False, False), y0=0.4), xf=M(o))
+    c.add(c.paint, rbox(2.0, 0.8, 2.1, r=0.4, seg=3, bevel=0.12, y0=0.46), xf=M(o, R))
+    for sx in (-1, 1):                                     # access panels on the body sides
+        c.add(c.sw('mid'), box(0.02, 0.4, 0.9, center=(0, 0, 0)), xf=M(W((sx * 1.0, 0.86, -0.3)), R))
+    # sensor head: neck, rounded box, radar face and two optronic windows, small antenna on top
+    c.add(c.paint, cylinder(0.25, 0.4, seg=12, y0=1.26), xf=M(W((0.0, 0.0, -0.4))))
+    hb = W((0.0, 1.62, -0.4))
+    c.add(c.paint, rbox(0.95, 0.72, 0.85, r=0.14, seg=2, bevel=0.06), xf=M(hb, R))
+    c.add(c.sw('dark'), box(0.62, 0.5, 0.03, center=(0, 0, 0)), xf=M(W((-0.08, 1.98, 0.03)), R))
+    for k, x in enumerate((0.3, 0.3)):
+        c.add(c.sw('glass'), cylinder(0.08, 0.04, seg=10, caps=(True, False)),
+              xf=M(W((x, 1.86 + 0.2 * k, 0.03)), R @ rot_x(math.pi / 2)))
+    c.add(c.paint, cylinder(0.03, 0.35, seg=5), xf=M(W((0.3, 2.34, -0.65))))
+    # elevating cradle with the two guns (child node, pivot on the elevation axis)
+    piv = W((0.0, 1.5, 0.15))
     c.b.node(node + '_Guns', parent=node, translation=piv)
     el = math.radians(8.0)
     Re = R @ rot_x(-el)
-    c.add(c.paint, rbox(1.2, 0.9, 1.6, r=0.22, seg=2, bevel=0.08, y0=-0.45), xf=M(piv, Re))
+    c.add(c.paint, rbox(1.15, 0.8, 1.5, r=0.22, seg=2, bevel=0.08, y0=-0.4), xf=M(piv, Re))
     d = Re @ np.array([0, 0, 1.0])
     for sx in (-1, 1):
-        g0 = piv + Re @ np.array([sx * 0.85, 0.0, -0.6])
-        c.add(c.sw('mid'), rbox(0.5, 0.5, 1.5, r=0.1, seg=1, y0=-0.25), xf=M(g0, Re))
+        g0 = piv + Re @ np.array([sx * 0.82, 0.0, -0.75])
+        c.add(c.sw('mid'), lathe([(0.0, 0.0), (0.26, 0.0), (0.28, 0.1), (0.28, 1.25), (0.22, 1.42), (0.0, 1.43)], seg=14),
+              xf=M(g0, axis_frame(d)))
+        c.add(c.paint, box(0.3, 0.35, 0.8, center=(0, 0, 0)), xf=M(piv + Re @ np.array([sx * 0.62, -0.05, -0.25]), Re))
         for k in range(6):
             a = 2 * math.pi * k / 6
-            off = Re @ np.array([0.11 * math.cos(a), 0.11 * math.sin(a), 0])
-            b0 = g0 + off + d * 0.7
-            c.add(c.sw('dark'), tube_path([b0, b0 + d * 1.75], 0.035, seg=5))
-        c.add(c.sw('dark'), tube_path([g0 + d * 1.6, g0 + d * 1.75], 0.16, seg=10))
+            off = Re @ np.array([0.1 * math.cos(a), 0.1 * math.sin(a), 0])
+            b0 = g0 + off + d * 1.35
+            c.add(c.sw('dark'), tube_path([b0, b0 + d * 1.15], 0.03, seg=5))
+        for z in (1.75, 2.42):                             # barrel clamps
+            c.add(c.sw('dark'), cylinder(0.15, 0.06, seg=12, caps=(True, True), y0=-0.03), xf=M(g0 + d * z, axis_frame(d)))
 
 
 # =============================================================================================
 # decoy launchers and small arms
 # =============================================================================================
-def kt216(c, pos, facing=0.0, el=45.0, rows=2, cols=5, r=0.07, length=1.35, node=None):
-    """KT-216 (PK-10) decoy launcher: base plate, yoke and a pack of tubes fixed at `el` degrees,
-    pointing along `facing` (yaw about +y, 0 = +z)."""
+def kt216(c, pos, facing=0.0, el=30.0, rows=2, cols=5, r=0.075, length=0.8, ped=1.0):
+    """KT-216 decoy launcher (bow photograph, 2018): box pedestal with two slots and a round port in its
+    front face, a turntable and a framed pack of short tubes trained along `facing` (yaw about +y,
+    0 = +z) and fixed at `el` degrees."""
     o = np.asarray(pos, float)
     R = rot_y(facing)
-    c.add(c.paint, rbox(0.9, 0.3, 0.8, r=0.08, seg=1, bevel=0.04), xf=M(o, R))
+    c.add(c.paint, rbox(0.85, ped, 0.95, r=0.06, seg=1, bevel=0.04), xf=M(o, R))
+    for s in (-1, 1):                                          # slots and the round port in the pedestal
+        c.add(c.sw('black'), box(0.11, ped * 0.5, 0.02, center=(0, 0, 0)),
+              xf=M(o + R @ np.array([s * 0.2, ped * 0.5, 0.48]), R))
+    c.add(c.sw('dark'), cylinder(0.12, 0.02, seg=12, caps=(True, False)), xf=M(o + R @ np.array([0.0, ped * 0.32, 0.47]),
+                                                                             R @ rot_x(math.pi / 2)))
+    c.add(c.sw('mid'), cylinder(0.42, 0.1, seg=16, caps=(True, True), y0=ped), xf=M(o))
     Re = R @ rot_x(-math.radians(el))
-    piv = o + R @ np.array([0, 0.45, -0.1])
+    piv = o + np.array([0, ped + 0.45, 0])
     d = Re @ np.array([0, 0, 1.0])
-    for s in (-1, 1):
-        c.add(c.paint, box(0.06, 0.35, 0.3, center=(0, 0, 0)), xf=M(o + R @ np.array([s * 0.42, 0.42, -0.1]), R))
+    pw, ph = cols * (2 * r + 0.03) + 0.12, rows * (2 * r + 0.03) + 0.12
+    c.add(c.paint, rbox(pw, ph, length, r=0.04, seg=1, y0=-ph / 2), xf=M(piv, Re))
     for i in range(cols):
         for j in range(rows):
-            off = Re @ np.array([(i - (cols - 1) / 2) * (2 * r + 0.02), (j - (rows - 1) / 2) * (2 * r + 0.02), 0])
-            a = piv + off - d * length * 0.35
-            c.add(c.sw('mid'), cylinder(r, length, seg=8, caps=(True, True)), xf=M(a, axis_frame(d)))
-            c.add(c.sw('black'), disc(r * 0.75, seg=8), xf=M(a + d * (length + 0.005), axis_frame(d)))
-    c.add(c.paint, box(cols * (2 * r + 0.02) + 0.1, rows * (2 * r + 0.02) + 0.1, 0.08, center=(0, 0, 0)),
-          xf=M(piv + d * 0.15, Re))
+            off = Re @ np.array([(i - (cols - 1) / 2) * (2 * r + 0.03), (j - (rows - 1) / 2) * (2 * r + 0.03), 0])
+            c.add(c.sw('black'), disc(r * 0.8, seg=8), xf=M(piv + off + d * (length / 2 + 0.006), axis_frame(d)))
+    for s in (-1, 1):                                          # yoke
+        c.add(c.paint, box(0.06, 0.5, 0.3, center=(0, 0, 0)), xf=M(o + R @ np.array([s * (pw / 2 + 0.05), ped + 0.33, 0]), R))
+
+
+def kt308(c, pos, facing=0.0, el=45.0, r=0.12, L=1.7):
+    """twin long-tube decoy launcher: two packs of 2 x 3 tubes on a common cradle, trained along `facing`."""
+    o = np.asarray(pos, float)
+    R = rot_y(facing)
+    c.add(c.paint, rbox(1.3, 0.5, 0.9, r=0.06, seg=1, bevel=0.04), xf=M(o, R))
+    Re = R @ rot_x(-math.radians(el))
+    d = Re @ np.array([0, 0, 1.0])
+    sp = 2 * r + 0.015
+    for px in (-0.42, 0.42):
+        piv = o + R @ np.array([px, 0.95, -0.15])
+        for i in range(3):
+            for j in range(2):
+                a = piv + Re @ np.array([(i - 1) * sp * 0.98, (j - 0.5) * sp, 0]) - d * L * 0.35
+                c.add(c.sw('mid'), cylinder(r, L, seg=10, caps=(True, True)), xf=M(a, axis_frame(d)))
+                c.add(c.sw('black'), disc(r * 0.8, seg=10), xf=M(a + d * (L + 0.005), axis_frame(d)))
+        c.add(c.paint, box(3 * sp + 0.06, 2 * sp + 0.06, 0.1, center=(0, 0, 0)), xf=M(piv + d * 0.2, Re))
+    for s in (-1, 1):
+        c.add(c.paint, box(0.08, 0.7, 0.45, center=(0, 0, 0)), xf=M(o + R @ np.array([s * 0.86, 0.75, -0.1]), R))
 
 
 def mtpu(c, pos, facing=0.0):

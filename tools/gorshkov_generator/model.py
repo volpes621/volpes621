@@ -531,15 +531,16 @@ def build_materials(atlas_L, paint_L, deck_L):
 
 def export(m, path, preview=False, ao=None):
     atlas = paint_atlas(m)
-    paint = st.make_tile_paint(1024, seed=3, base=PAL['super'])
+    paint = st.make_tile_paint(2048, seed=3, base=PAL['super'])
     paint.rough = 0.36 + 0.12 * (paint.rough - 0.55) / 0.15
     paint.metal[:] = 0.14
-    deck = st.make_tile_deck(512, seed=5, base=PAL['deck_red'])
+    deck = st.make_tile_deck(1024, seed=5, base=PAL['deck_red'])
     mats = build_materials(atlas, paint, deck)
-    extras = {'title': 'Admiral Gorshkov-class frigate (Project 22350) - low poly',
+    extras = {'title': 'Admiral Gorshkov-class frigate (Project 22350)',
               'units': 'metres; +Y up, +Z forward (bow), +X port; design waterline at y = 0',
               'references': '1:500 general-arrangement drawing (measured only); Russian MoD, Kremlin and '
-                            'Mehr News Agency photographs on Wikimedia Commons (CC BY 4.0)'}
+                            'Mehr News Agency photographs of Admiral Gorshkov, Admiral Kasatonov and Admiral '
+                            'Golovko on Wikimedia Commons (CC BY 4.0)'}
     builder_to_glb(m.b, mats, path, asset_extras=extras, root_name='Admiral_Gorshkov_Class_Frigate', ao=ao)
     if preview:
         atlas.base_png(True).save(path.replace('.glb', '_atlas_preview.png'))
