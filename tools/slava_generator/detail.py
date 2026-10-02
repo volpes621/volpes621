@@ -1,4 +1,4 @@
-"""Detail pass: refined equipment shapes (weapons, directors, radars) and geometry helpers.
+"""Detail pass: refined equipment shapes (directors, radars, launcher supports, boats) and geometry helpers.
 
 Local part frames: +y up, +z = the direction the part faces (bow when facing = 0).
 All builders take world positions; rotating parts get their own node pivoted at `pos`.
@@ -89,37 +89,6 @@ def axis_frame(direction):
     """rotation taking local +y onto `direction`."""
     d = normalize(np.asarray(direction, float))
     return frame_from_dir(d) @ rot_x(math.pi / 2)
-
-
-# =============================================================================================
-# AK-630M close-in weapon system
-# =============================================================================================
-def ak630(ctx, pos, facing=0.0, name='AK630', parent=None):
-    """AK-630M: ribbed base ring, conical turret with flat top, gun port and the 6-barrel cluster jacket."""
-    b = ctx.b
-    o = np.asarray(pos, float)
-    b.push(name, parent=parent, translation=tuple(o))
-    R = rot_y(facing)
-    pt = ctx.paint
-    # base ring with stiffening ribs
-    ctx.add(pt, lathe([(1.32, 0.0), (1.32, 0.26), (1.22, 0.34)], seg=20), xf=M(o, R))
-    for k in range(10):
-        a = 2 * math.pi * (k + 0.5) / 10
-        ctx.add(pt, box(0.08, 0.26, 0.16, center=(0, 0.13, 0)), xf=M(o + R @ np.array([1.36 * math.sin(a), 0, 1.36 * math.cos(a)]), R @ rot_y(a)))
-    # turret: conical body with a rounded shoulder and flat roof
-    prof = [(1.18, 0.34), (1.16, 0.52), (1.02, 0.9), (0.84, 1.36), (0.76, 1.52), (0.62, 1.6), (0.0, 1.62)]
-    ctx.add(pt, lathe(prof, seg=20), xf=M(o, R))
-    # gun port block on the front face and the barrel jacket
-    ctx.add(ctx.sw('mid'), rbox(0.62, 0.62, 0.45, r=0.1, seg=1, y0=0.68), xf=M(o + R @ np.array([0, 0, 0.92]), R))
-    Rg = R @ rot_x(math.pi / 2)
-    ctx.add(ctx.sw('dark'), cylinder(0.2, 0.55, seg=10), xf=M(o + R @ np.array([0, 0.99, 1.1]), Rg))
-    ctx.add(ctx.sw('dark'), cylinder(0.16, 1.55, seg=10, r_top=0.15), xf=M(o + R @ np.array([0, 0.99, 1.62]), Rg))
-    ctx.add(ctx.sw('dark'), cylinder(0.2, 0.3, seg=10), xf=M(o + R @ np.array([0, 0.99, 3.12]), Rg))
-    # optical sight and vent on the roof
-    ctx.add(pt, rbox(0.34, 0.26, 0.5, r=0.06, seg=1, y0=1.6), xf=M(o + R @ np.array([-0.32, 0, -0.15]), R))
-    ctx.add(ctx.sw('dark'), box(0.24, 0.12, 0.04, center=(0, 0, 0)), xf=M(o + R @ np.array([-0.32, 1.74, 0.11]), R))
-    ctx.add(pt, cylinder(0.12, 0.18, seg=8), xf=M(o + R @ np.array([0.3, 1.6, -0.3]), R))
-    b.pop()
 
 
 # =============================================================================================
@@ -232,80 +201,6 @@ def top_dome(ctx, pos, name='TopDome', parent='Superstructure'):
     # small auxiliary radome on the base, vent mast behind
     ctx.add(ctx.sw('radome'), sphere(0.42, seg=12, rings=6), xf=M(o + np.array([-1.35, 1.75, 1.0])))
     b.pop()
-
-
-# =============================================================================================
-# AK-130 twin 130 mm turret body (called inside the turret node) and guns
-# =============================================================================================
-def ak130_turret(ctx, Bc, ybase):
-    """turret shell centred at (B=Bc, y=ybase): rounded body, cylindrical front shield, hood, cupola."""
-    pt = ctx.paint
-    zc = 93.2 - Bc
-    # body: superellipse sections, flat front, rounded rear, filleted roof
-    secs = []
-    for h, sc in ((0.0, 1.0), (0.25, 1.03), (1.8, 1.04), (2.55, 1.0), (2.95, 0.93), (3.2, 0.8), (3.3, 0.55), (3.33, 0.1)):
-        ring = []
-        for k in range(28):
-            a = 2 * math.pi * k / 28
-            ca, sa = math.cos(a), math.sin(a)
-            x = 2.6 * sc * np.sign(ca) * abs(ca) ** 0.55
-            zz = 2.9 * sc * np.sign(sa) * abs(sa) ** (0.42 if sa > 0 else 0.85)
-            zz = min(zz, 1.9)
-            ring.append((x, ybase + h, zc + zz - 0.3))
-        secs.append(ring)
-    P, N, UV, I = loft(secs, closed=True, uvscale=1.0)
-    P, N, I = orient_outward(P, N, I, lambda p: np.array([0, ybase + 1.5, zc - 0.5]))
-    ctx.add(pt, (P, N, UV, I))
-    # cylindrical front shield (rotates with the guns in reality; kept with the turret)
-    ang = np.linspace(-0.82, 0.82, 11)
-    Rf = 2.45
-    cz = zc - 0.65
-    loop_b = [(Rf * math.sin(a), cz + Rf * math.cos(a)) for a in ang]
-    P, N, UV, I = band(loop_b, ybase + 0.35, loop_b, ybase + 2.95, closed=False)
-    P, N, I = orient_outward(P, N, I, lambda p: np.array([0.0, p[1], cz]))
-    ctx.add(pt, (P, N, UV, I))
-    # shield top / bottom caps (fans)
-    for yy, up in ((ybase + 2.95, True), (ybase + 0.35, False)):
-        pts = [(0.0, cz)] + loop_b
-        Pc = np.array([(x, yy, z) for (x, z) in pts])
-        Ic = np.array([[0, i, i + 1] for i in range(1, len(pts) - 1)])
-        Nn = np.tile([0, 1.0 if up else -1.0, 0], (len(Pc), 1))
-        if np.cross(Pc[Ic[0, 1]] - Pc[Ic[0, 0]], Pc[Ic[0, 2]] - Pc[Ic[0, 0]])[1] * (1 if up else -1) < 0:
-            Ic = Ic[:, ::-1]
-        ctx.add(pt, (Pc, Nn, Pc[:, [2, 0]], Ic))
-    # gun ports (dark slots) on the shield face
-    for s in (1, -1):
-        ctx.add(ctx.sw('black'), rbox(0.7, 1.1, 0.12, r=0.15, seg=2, y0=ybase + 1.05), xf=M(np.array([s * 0.78, 0, cz + Rf - 0.02])))
-    # roof hood with a sloped front, sight cupola, vents
-    ctx.add(pt, frustum_box((-0.95, 0.95, zc - 1.6, zc + 0.7), (-0.8, 0.8, zc - 1.45, zc + 0.35), ybase + 3.25, ybase + 3.75))
-    ctx.add(pt, lathe([(0.0, 0.0), (0.58, 0.0), (0.58, 0.18), (0.5, 0.42), (0.3, 0.58), (0.0, 0.62)], seg=16),
-            xf=M(np.array([-1.15, ybase + 3.2, zc - 1.1])))
-    ctx.add(ctx.sw('glass'), box(0.42, 0.14, 0.04, center=(0, 0, 0)), xf=M(np.array([-1.15, ybase + 3.62, zc - 0.55])))
-    for s in (1, -1):
-        ctx.add(pt, cylinder(0.16, 0.2, seg=8), xf=M(np.array([s * 1.6, ybase + 3.05, zc - 1.9])))
-    # side hatches with handles
-    for s in (1, -1):
-        ctx.add(ctx.rect('door'), _quad(np.array([s * 2.66, ybase + 0.85, zc - 1.5]), np.array([s * 2.66, ybase + 0.85, zc - 0.7]),
-                                        np.array([s * 2.66, ybase + 2.35, zc - 0.7]), np.array([s * 2.66, ybase + 2.35, zc - 1.5]),
-                                        uv=[(0, 1), (1, 1), (1, 0), (0, 0)] if s > 0 else [(1, 1), (0, 1), (0, 0), (1, 0)],
-                                        n=np.array([s, 0, 0.0])))
-        for yy in (1.3, 1.7, 2.1):
-            ctx.add(pt, box(0.05, 0.05, 0.3, center=(0, 0, 0)), xf=M(np.array([s * 2.7, ybase + yy, zc - 0.35])))
-
-
-def ak130_guns(ctx, Bt, xs, y, Bm):
-    """two barrels from the shield (B = Bt) to the muzzle (B = Bm) at height y."""
-    pt = ctx.paint
-    Rz = rot_x(math.pi / 2)          # local +y -> +z (forward)
-    z0 = 93.2 - Bt
-    L = Bt - Bm
-    for s in xs:
-        ctx.add(pt, cylinder(0.4, 0.55, seg=16), xf=M(np.array([s, y, z0 - 0.35]), Rz))
-        ctx.add(pt, cylinder(0.31, 1.1, seg=14, r_top=0.27), xf=M(np.array([s, y, z0 + 0.2]), Rz))
-        ctx.add(pt, cylinder(0.3, 0.12, seg=14), xf=M(np.array([s, y, z0 + 1.3]), Rz))
-        ctx.add(pt, cylinder(0.2, L - 1.85, seg=12, r_top=0.165), xf=M(np.array([s, y, z0 + 1.42]), Rz))
-        ctx.add(pt, cylinder(0.205, 0.32, seg=12), xf=M(np.array([s, y, z0 + L - 0.43]), Rz))
-        ctx.add(ctx.sw('black'), cylinder(0.1, 0.02, seg=10, caps=(False, True)), xf=M(np.array([s, y, z0 + L - 0.1]), Rz))
 
 
 # =============================================================================================

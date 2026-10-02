@@ -353,22 +353,6 @@ def sphere_at(ctx, sw, c, r, seg=12, rings=6, node=None):
 # ------------------------------------------------------------------------------------------ equipment
 
 
-def rbu6000(ctx, pos, facing=0.0, name='RBU6000', parent=None):
-    b = ctx.b
-    o = np.asarray(pos, float)
-    b.push(name, parent=parent, translation=tuple(o))
-    R = rot_y(facing)
-    ctx.add(ctx.paint, cylinder(0.85, 0.55, seg=14), xf=M(o, R))
-    ctx.add(ctx.paint, box(0.8, 1.1, 0.9, center=(0, 1.0, -0.15)), xf=M(o, R))
-    el = rot_x(-math.radians(25))
-    for k in range(12):
-        a = math.radians(-150 + k * (300 / 11.0))
-        cx, cy = 0.62 * math.sin(a), 0.62 * math.cos(a)
-        Rt = R @ el @ rot_x(math.pi / 2)
-        ctx.add(ctx.sw('dark'), cylinder(0.12, 1.75, seg=6), xf=M(o + R @ (el @ np.array([cx, cy, -0.75]) + np.array([0, 1.3, 0])), Rt))
-    b.pop()
-
-
 def raft_rack(ctx, base, n=4, along=(0, 0, -1), node=None, stack=1, spacing=0.8):
     base = np.asarray(base, float)
     d = normalize(np.asarray(along, float))

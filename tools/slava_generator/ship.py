@@ -18,6 +18,7 @@ import model as S2
 import detail as D
 import antennas as A
 import deckgear as G
+import weapons as WP
 
 PAL = st.PAL
 
@@ -203,24 +204,6 @@ def paint_funnel_top(L, rect):
         L.rect(x0, y0 + k, x1, y0 + k + 1, col=None, add_height=0.15)
 
 
-def paint_vls_top(L, rect):
-    """S-300F revolver hatch as seen flush in the red-brown platform: outer ring + 8 lid circles."""
-    x0, y0, x1, y1 = rect
-    w, h = x1 - x0, y1 - y0
-    L.rect(x0, y0, x1, y1, col=PAL['deck_red'], alpha=1.0, rough=0.75, metal=0.03)
-
-    def ring(d, s):
-        cx, cy, r = w * s / 2, h * s / 2, w * s * 0.47
-        d.ellipse([cx - r, cy - r, cx + r, cy + r], outline=255, width=3 * s)
-        for k in range(8):
-            a = 2 * math.pi * k / 8 + math.pi / 8
-            ox = cx + 0.64 * r * math.cos(a); oy = cy + 0.64 * r * math.sin(a)
-            rr = 0.24 * r
-            d.ellipse([ox - rr, oy - rr, ox + rr, oy + rr], outline=255, width=2 * s)
-    mask = L.draw_mask(w, h, ring)
-    L.mask_apply(mask, col=PAL['deck_red'] * 0.55, add_height=0.8, x0=x0, y0=y0)
-
-
 def paint_ensign(L, rect):
     x0, y0, x1, y1 = rect
     w, h = x1 - x0, y1 - y0
@@ -402,7 +385,7 @@ def register_decals(m):
     m.alloc('door', 48, 96, paint_door)
     m.alloc('vent', 256, 112, paint_vent)
     m.alloc('funnel_top', 256, 112, paint_funnel_top)
-    m.alloc('vls_top', 128, 128, paint_vls_top)
+    m.alloc('vls_top', 512, 512, WP.paint_vls_top)
     m.alloc('ensign', 96, 64, paint_ensign)
     m.alloc('star', 64, 64, paint_star)
     m.alloc('crest', 96, 96, paint_crest)
@@ -415,6 +398,7 @@ def register_decals(m):
     m.alloc('vlouvre', 256, 128, paint_vert_louvre)
     m.alloc('dome', 128, 128, paint_top_dome)
     A.register(m)
+    WP.register(m)
 
 
 # =============================================================================================
@@ -558,14 +542,8 @@ def ak130(m):
     c.add(c.paint, cylinder(3.5, ybase - yd + 0.4, seg=28, y0=yd - 0.4), xf=M(P3(Bc, 0, 0)))
     c.add(c.deck, cylinder(3.5, 0.01, seg=28, caps=(False, True), y0=ybase - 0.01), xf=M(P3(Bc, 0, 0)))
     G.splash_shield(c, Bc, 4.4, -130, 130, lambda B, x: dk(B, x) - 0.1, ybase - 0.6)
-    # turret (training node)
-    o = P3(Bc, 0, ybase)
-    b.push('AK130_Turret', parent='Hull', translation=tuple(o))
-    D.ak130_turret(c, Bc, ybase)
-    b.push('AK130_Guns', parent='AK130_Turret', translation=tuple(P3(27.6, 0, 11.6)))
-    D.ak130_guns(c, 27.6, (0.78, -0.78), 11.6, 21.4)
-    b.pop()
-    b.pop()
+    # turret (training node) and guns (elevating node)
+    WP.ak130_mount(c, Bc, ybase, stars=STARS_ON_CAPS)
 
 
 # =============================================================================================
@@ -587,10 +565,10 @@ def forward_deckhouse(m):
         door(c, 55.6, s * 3.67, dk(55.6, 3.6) - 0.05, (s, 0, 0))
     rail_poly(c, [(36.9, 3.65), (58.6, 3.65), (58.6, -3.65), (36.9, -3.65), (35.0, -1.6), (35.0, 1.6)], 12.95,
               sides=(0, 2, 3, 4, 5))
-    D.ak630(c, P3(39.6, 0.0, 12.95), facing=0.0, name='AK630_1', parent='Superstructure')
-    D.ak630(c, P3(45.2, 0.0, 14.1), facing=0.0, name='AK630_2', parent='Superstructure')
-    rbu6000(c, P3(52.3, 2.2, 12.95), facing=0.0, name='RBU6000_P', parent='Superstructure')
-    rbu6000(c, P3(52.3, -2.2, 12.95), facing=0.0, name='RBU6000_S', parent='Superstructure')
+    WP.ak630m(c, P3(39.6, 0.0, 12.95), facing=0.0, name='AK630_1', parent='Superstructure', base_h=0.8)
+    WP.ak630m(c, P3(45.2, 0.0, 14.1), facing=0.0, name='AK630_2', parent='Superstructure', base_h=0.8)
+    WP.rbu6000m(c, P3(52.3, 2.2, 12.95), facing=0.0, name='RBU6000_P', parent='Superstructure')
+    WP.rbu6000m(c, P3(52.3, -2.2, 12.95), facing=0.0, name='RBU6000_S', parent='Superstructure')
     D.bass_tilt(c, P3(57.3, 0.0, 12.95), facing=0.0, name='BassTilt_1', pedestal=2.4, parent='Superstructure')
     b.node('Superstructure')
     for B in (54.2, 50.4):
@@ -730,12 +708,12 @@ def launcher_tube(m, Bf, x, dy, node=None):
     L = TUBE_LEN_B / math.cos(TUBE_EL)
     prof = [(0.0, -0.32), (0.55, -0.27), (0.92, -0.13), (1.06, 0.0), (1.08, 0.15), (1.08, 2.0), (1.0, 2.12),
             (0.9, 2.3), (0.86, L - 0.6), (0.72, L - 0.25), (0.45, L - 0.05), (0.0, L)]
-    P, N, UV, I = lathe(prof, seg=16, uvscale=1.0)
+    P, N, UV, I = lathe(prof, seg=14, uvscale=1.0)
     R = frame_from_dir(-d)               # local +z points aft along the axis
     Mx = np.eye(4); Mx[:3, :3] = R @ rot_x(math.pi / 2); Mx[:3, 3] = p_front
     c.add(c.paint, (P, N, UV, I), xf=Mx, node=node)
     for sring in (5.6, 6.1):
-        c.add(c.paint, cylinder(0.94, 0.12, seg=16, caps=(False, False)), xf=M(p_front - d * sring, R @ rot_x(-math.pi / 2)), node=node)
+        c.add(c.paint, cylinder(0.94, 0.12, seg=14, caps=(False, False)), xf=M(p_front - d * sring, R @ rot_x(-math.pi / 2)), node=node)
     # front cover hinge/latches
     c.add(c.sw('mid'), box(0.25, 0.5, 0.35, center=(0, 0, 0)), xf=M(p_front + np.array([0, 1.05, -0.35]), R), node=node)
     # red star painted on the cover (Moskva)
@@ -771,10 +749,10 @@ def mainmast(m):
     side_strip(c, 'PORTS', 87.5, 102.0, 9.92, 7.6, 1.0)
     for s in (1, -1):
         door(c, 94.8, s * 9.92, 6.85, (s, 0, 0))
-    D.ak630(c, P3(95.5, 9.0, 9.5), facing=math.radians(20), name='AK630_3', parent='Superstructure')
-    D.ak630(c, P3(95.5, -9.0, 9.5), facing=math.radians(-20), name='AK630_4', parent='Superstructure')
-    D.ak630(c, P3(101.25, 9.0, 9.5), facing=math.radians(160), name='AK630_5', parent='Superstructure')
-    D.ak630(c, P3(101.25, -9.0, 9.5), facing=math.radians(-160), name='AK630_6', parent='Superstructure')
+    WP.ak630m(c, P3(95.5, 9.0, 9.5), facing=math.radians(20), name='AK630_3', parent='Superstructure', base_h=0.8)
+    WP.ak630m(c, P3(95.5, -9.0, 9.5), facing=math.radians(-20), name='AK630_4', parent='Superstructure', base_h=0.8)
+    WP.ak630m(c, P3(101.25, 9.0, 9.5), facing=math.radians(160), name='AK630_5', parent='Superstructure', base_h=0.8)
+    WP.ak630m(c, P3(101.25, -9.0, 9.5), facing=math.radians(-160), name='AK630_6', parent='Superstructure', base_h=0.8)
     D.bass_tilt(c, P3(88.4, 8.4, 9.5), facing=math.radians(60), name='BassTilt_2', pedestal=1.3, parent='Superstructure')
     D.bass_tilt(c, P3(88.4, -8.4, 9.5), facing=math.radians(-60), name='BassTilt_3', pedestal=1.3, parent='Superstructure')
     b.node('Superstructure')
@@ -900,14 +878,12 @@ def vls(m):
         P, N, UV, I = cap_polygon(np.array(poly), ytop, up=True)
         c.add(S2.BAND_UV, (P, N, S2.deck_band_uv(P), I))
         for Bc in VLS_B:
-            o = P3(Bc, cx, ytop)
-            # flush hatch ring (red-brown with lid outlines)
-            c.add(c.rect('vls_top'), cylinder(1.9, 0.03, seg=20, caps=(False, True), cap_uv_rect=(0, 0, 1, 1)), xf=M(o))
-            G.s300_drive(c, Bc, cx, s, ytop)
+            WP.s300_hatch(c, Bc, cx, ytop)
+            WP.s300_drive(c, Bc, cx, ytop + 0.05)
     # loading gantry on plate legs along the centreline, running on a deck rail
     yd = dk(134.0)
     c.add(c.sw("light"), D.rbox(0.45, 0.22, 14.0, r=0.06, seg=1), xf=M(P3(134.5, 0, yd)))
-    G.s300_gantry(c, 128.2, 137.8, yd, yd + 3.0, legs=(129.4, 136.6))
+    WP.s300_gantry(c, 128.2, 137.8, yd, yd + 3.0, legs=(129.4, 136.6))
     for Bv in (131.3, 139.3):
         for s in (1, -1):
             mushroom_vent(c, P3(Bv, s * 6.0, dk(Bv, 6.0) - 0.05), r=0.55)
@@ -1064,14 +1040,8 @@ def searchlight(c, pos, facing=0.0):
 
 
 def decoy_launcher(c, pos, facing=0.0, tubes=2):
-    """PK-2 / PK-10 style launcher: pedestal + inclined tube pack"""
-    o = np.asarray(pos, float)
-    R = rot_y(facing)
-    c.add(c.paint, box(0.9, 0.5, 0.9, center=(0, 0.25, 0)), xf=M(o, R))
-    el = rot_x(-math.radians(45))
-    for k in range(tubes):
-        xo = (k - (tubes - 1) / 2) * 0.42
-        c.add(c.sw('mid'), cylinder(0.19, 1.5, seg=8), xf=M(o + R @ np.array([xo, 0.55, -0.2]), R @ el @ rot_x(math.pi / 2)))
+    """PK-2 twin decoy launcher"""
+    WP.pk2(c, pos, facing)
 
 
 def locker(c, B, x, y, w=1.2, h=1.0, d=0.6, along=False):

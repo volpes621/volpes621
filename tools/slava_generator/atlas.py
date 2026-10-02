@@ -29,7 +29,7 @@ W = 2048
 BANDS = {
     'HULL': (0, 320), 'DECK': (320, 576), 'RAIL': (576, 640), 'WINDOW': (640, 704),
     'PORTS': (704, 736), 'LOUVER': (736, 768), 'LADDER': (768, 800), 'LATTICE': (800, 896),
-    'NET': (896, 960),
+    'NET': (896, 960), 'PERF': (962, 1010),
 }
 RAIL_REPEAT_M = 24.0     # metres of railing per full atlas width
 WIN_REPEAT_M = 24.0
@@ -39,6 +39,7 @@ LADDER_REPEAT_M = 12.0
 LATTICE_REPEAT_M = 25.6      # isotropic: band (96 px) = 1.2 m -> 80 px/m
 LAT_BAND_M = 1.2
 NET_REPEAT_M = 35.0
+PERF_REPEAT_M = 24.0         # perforated splash-shield plating (band = full wall height)
 
 # ---------------------------------------------------------------- palette (sRGB)
 PAL = {
@@ -196,6 +197,28 @@ def paint_lattice(L):
             L.rect(xx2, y0 + t, xx2 + 3, y0 + t + 1, col=c * 0.8, alpha=1.0)
     L.rect(0, y0, W, y0 + 3, alpha=1.0, col=c * 0.75)
     L.rect(0, y1 - 3, W, y1, alpha=1.0, col=c * 0.75)
+
+
+def paint_perf_band(L):
+    """perforated plating (AK-130 barbette shield, as on Varyag): three rows of holes above and below a
+    stiffening rib, solid top and bottom edges. 85 px/m along u, the band height = the wall height."""
+    y0, y1 = BANDS['PERF']
+    h = y1 - y0
+    c = PAL['super']
+    L.rect(0, y0, W, y1, col=c, alpha=1.0, rough=0.5, metal=0.12)
+    L.rect(0, y0 + int(h * 0.47), W, y0 + int(h * 0.55), col=c * 0.92, add_height=0.8)
+    L.rect(0, y0, W, y0 + 3, col=c * 0.9, add_height=0.6)
+
+    def holes(d, s):
+        for fy in (0.17, 0.27, 0.37, 0.65, 0.75, 0.85):
+            cy = h * fy
+            for k in range(int(W / 13.6)):
+                cx = (k + (0.5 if fy in (0.27, 0.75) else 0.0)) * 13.6
+                d.ellipse([(cx - 4.2) * s, (cy - 1.8) * s, (cx + 4.2) * s, (cy + 1.8) * s], fill=255)
+    m = L.draw_mask(W, h, holes, ss=2)
+    L.mask_apply(m, alpha=0.0, col=c * 0.5, x0=0, y0=y0)
+    a = L.alpha[y0:y1]
+    L.alpha[y0:y1] = np.where(a > 0.5, 1.0, 0.0)
 
 
 def paint_net(L):

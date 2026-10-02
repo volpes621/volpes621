@@ -67,7 +67,7 @@ class Model:
         self.deck_marks = []
         self.hull_marks = []
         self.decals = OrderedDict()
-        self._sky = [[0, 968, st.W]]          # skyline of the decal area: [x, first free row, width]
+        self._sky = [[0, 1012, st.W]]         # skyline of the decal area: [x, first free row, width]
         self.hull = None
 
     def alloc(self, name, w, h, painter):
@@ -110,7 +110,7 @@ class Model:
 
 # ---------------------------------------------------------------------------- hull
 def build_hull(m, transom_hole=(2.4, 0.4, 3.4)):
-    H = Hull(nrows=26)
+    H = Hull(nrows=22)
     m.hull = H
     b = m.b
     b.node('Hull')
@@ -313,7 +313,7 @@ def paint_atlas(m):
     paint_hull_band(L, m)
     paint_deck_band(L, m)
     st.paint_rail(L); st.paint_window(L); st.paint_ports(L); st.paint_louver(L)
-    st.paint_ladder(L); st.paint_lattice(L); st.paint_net(L); st.paint_swatches(L)
+    st.paint_ladder(L); st.paint_lattice(L); st.paint_net(L); st.paint_perf_band(L); st.paint_swatches(L)
     for name, (rect, painter) in m.decals.items():
         painter(L, rect)
     return L

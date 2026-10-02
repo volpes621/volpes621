@@ -4,6 +4,7 @@ import math
 import numpy as np
 
 from meshkit import *
+import atlas as st
 from kit import M, P3
 from detail import rbox, taper_beam
 from antennas import pipe, _orient
@@ -22,13 +23,21 @@ def splash_shield(ctx, Bc, R, a0, a1, ybot, ytop, n=30, stiff_every=3):
         if k > 0:
             acc += R * math.radians(abs(a1 - a0) / n)
         nrm = np.array([math.sin(a), 0.0, math.cos(a)])         # outward (world: +x port, +z forward)
-        for y in (ybot(B, x), ytop):
-            P.append(P3(B, x, y)); N.append(nrm); UV.append((acc, -y))
+        yb = ybot(B, x)
+        for y in (yb, ytop):
+            P.append(P3(B, x, y)); N.append(nrm); UV.append((acc, (ytop - y) / (ytop - yb)))
     for k in range(n):
         i = 2 * k
         I += [(i, i + 2, i + 3), (i, i + 3, i + 1)]
-    ctx.add(ctx.paint, _orient(np.array(P), np.array(N), np.array(UV), np.array(I)))
+    # perforated plating (see-through), rolled top edge and a horizontal stiffening rib outside
+    ctx.add(ctx.band('PERF', st.PERF_REPEAT_M), _orient(np.array(P), np.array(N), np.array(UV), np.array(I)))
     ctx.add(ctx.paint, pipe([P3(B, x, ytop) for (B, x, _) in pts], 0.06, seg=5))
+    mid = []
+    for (B, x, a) in pts:
+        out = np.array([math.sin(a), 0.0, math.cos(a)])
+        ym = 0.49 * (ytop + ybot(B, x))
+        mid.append(P3(B, x, ym) + out * 0.03)
+    ctx.add(ctx.paint, pipe(mid, 0.035, seg=3), occ=False)
     for k in range(stiff_every // 2, n + 1, stiff_every):
         B, x, a = pts[k]
         out = np.array([math.sin(a), 0.0, math.cos(a)])
@@ -36,49 +45,6 @@ def splash_shield(ctx, Bc, R, a0, a1, ybot, ytop, n=30, stiff_every=3):
         y0, y1 = ybot(B, x), ytop - 0.08
         ctx.add(ctx.paint, taper_beam(np.array([p[0], y0, p[2]]) + out * 0.08, np.array([p[0], y1, p[2]]),
                                       0.08, 0.2, 0.08, 0.06, up=out))
-
-
-def s300_drive(ctx, Bc, cx, s, ytop):
-    """lid-drive unit on one B-204 revolver hatch: base plate, three bevelled boxes, the round
-    loading-hatch cover outboard-forward and its hinge arms (light grey, as on Varyag)."""
-    lt = ctx.sw('light')
-    bx, bxx = Bc + 0.7, cx - s * 0.25                       # drive cluster (inboard-aft)
-    ctx.add(lt, rbox(2.2, 0.08, 2.1, r=0.18, seg=2, y0=ytop), xf=M(P3(bx, bxx, 0)))
-    for dx, h, d in ((-0.5, 1.05, 1.55), (0.5, 1.2, 1.7)):
-        ctx.add(lt, rbox(0.92, h, d, r=0.07, seg=1, bevel=0.06, y0=ytop + 0.08), xf=M(P3(bx, bxx + s * dx, 0)))
-    ctx.add(lt, rbox(0.75, 0.38, 0.95, r=0.06, seg=1, bevel=0.04, y0=ytop + 1.28), xf=M(P3(bx + 0.2, bxx + s * 0.5, 0)))
-    # round cover plate with a raised rim and the two hinge arms to the drive
-    cB, cX = Bc - 0.8, cx + s * 0.55
-    ctx.add(lt, lathe([(1.02, 0.0), (1.02, 0.1), (0.94, 0.15), (0.86, 0.12), (0.0, 0.12)], seg=16),
-            xf=M(P3(cB, cX, ytop)))
-    dB, dX = bx - cB, bxx - cX
-    L = math.hypot(dB, dX)
-    uB, uX = dB / L, dX / L                                   # cover -> drive, in (B, x)
-    for off in (-0.32, 0.32):
-        pB, pX = -uX * off, uB * off                          # sideways spacing of the two arms
-        a = P3(cB + 0.82 * uB + pB, cX + 0.82 * uX + pX, ytop + 0.14)
-        b_ = P3(bx - 0.86 + pB * 0.5, bxx + pX, ytop + 0.35)
-        ctx.add(lt, pipe([a, (a + b_) / 2 + np.array([0, 0.16, 0]), b_], 0.06, seg=4))
-
-
-def s300_gantry(ctx, B0, B1, yd, yb, legs):
-    """loading gantry on the centreline: box girder on tapered plate legs, end units, guide rod."""
-    lt = ctx.sw('light')
-    Bm = (B0 + B1) / 2
-    ctx.add(lt, rbox(0.95, 0.8, B1 - B0, r=0.1, seg=1, bevel=0.04, y0=yb - 0.4), xf=M(P3(Bm, 0, 0)))
-    for Bl in legs:
-        # tapered plate leg with a flanged edge, foot plate and a diagonal stay
-        ctx.add(lt, frustum_box((-0.75, 0.75, -0.07, 0.07), (-0.38, 0.38, -0.07, 0.07), yd, yb - 0.4), xf=M(P3(Bl, 0, 0)))
-        for sx in (1, -1):
-            ctx.add(lt, pipe([P3(Bl - 0.45, sx * 0.55, yd), P3(Bl, sx * 0.4, yb - 0.6)], 0.05, seg=4))
-        ctx.add(lt, rbox(1.6, 0.08, 1.2, r=0.08, seg=1, y0=yd), xf=M(P3(Bl, 0, 0)))
-    # end units and the cross head at the aft end
-    ctx.add(lt, rbox(1.3, 0.95, 1.5, r=0.1, seg=1, bevel=0.05, y0=yb + 0.4), xf=M(P3(B0 + 0.5, 0, 0)))
-    ctx.add(lt, rbox(4.4, 0.55, 0.8, r=0.1, seg=1, bevel=0.04, y0=yb - 0.2), xf=M(P3(B1 - 0.4, 0, 0)))
-    for sx in (1, -1):
-        ctx.add(lt, rbox(0.9, 0.8, 1.0, r=0.08, seg=1, bevel=0.04, y0=yb - 0.25), xf=M(P3(B1 - 0.4, sx * 1.9, 0)))
-        ctx.add(ctx.sw('red'), cylinder(0.12, yb - 0.25 - yd, seg=8, y0=yd), xf=M(P3(B1 - 0.4, sx * 1.9, 0)))
-    ctx.add(lt, pipe([P3(B0 + 0.3, 0.55, yd + 1.7), P3(B1 + 0.2, 0.55, yd + 1.7)], 0.05, seg=5))
 
 
 def round_vent(ctx, pos, r=0.32, h=0.55):
