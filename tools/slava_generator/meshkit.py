@@ -891,11 +891,13 @@ class GLBWriter:
             f.write(bytes(self.bin))
 
 
-def weld(P, N, UV, I, eps=1e-5):
-    """Merge identical vertices (same position, normal, uv)."""
+def weld(P, N, UV, I, eps=1e-5, extra=None):
+    """Merge identical vertices (same position, normal, uv); `extra` (per-vertex array) follows the merge."""
     key = np.concatenate([np.round(P / eps), np.round(N * 1000), np.round(UV / 1e-5)], axis=1).astype(np.int64)
     _, first, inv = np.unique(key, axis=0, return_index=True, return_inverse=True)
     inv = inv.reshape(-1)
+    if extra is not None:
+        return P[first], N[first], UV[first], inv[I], extra[first]
     return P[first], N[first], UV[first], inv[I]
 
 
@@ -933,7 +935,7 @@ def builder_to_glb(builder, materials, path, asset_extras=None, root_name='Root'
         nd = builder.nodes[name]
         off = builder.world_offset(name)
         for mname, geos in nd.items():
-            parts = []
+            parts, thin = [], []
             for g in geos:
                 P, N, UV, I = g.P, g.N, g.UV, g.I
                 if len(I) == 0:
@@ -951,9 +953,11 @@ def builder_to_glb(builder, materials, path, asset_extras=None, root_name='Root'
                     P, N, UV = sp.reshape(-1, 3), sn.reshape(-1, 3), su.reshape(-1, 2)
                     I = np.arange(k * 3).reshape(-1, 3)
                 parts.append((P, N, UV, I))
+                thin.append(np.full(len(P), not g.occ))     # see-through parts: AO from their more open side
             if not parts:
                 continue
             P, N, UV, I = merge(parts)
+            TH = np.concatenate(thin)
             nl = np.linalg.norm(N, axis=1)
             bad = ~(nl > 1e-6)
             if np.any(bad):
@@ -962,9 +966,9 @@ def builder_to_glb(builder, materials, path, asset_extras=None, root_name='Root'
             used = np.unique(I.reshape(-1))
             remap = -np.ones(len(P), dtype=np.int64)
             remap[used] = np.arange(len(used))
-            P, N, UV, I = P[used], N[used], UV[used], remap[I]
-            P, N, UV, I = weld(P, N, UV, I)
-            prim_data[(name, mname)] = [P, N, UV, I, None, off]
+            P, N, UV, I, TH = P[used], N[used], UV[used], remap[I], TH[used]
+            P, N, UV, I, TH = weld(P, N, UV, I, extra=TH)
+            prim_data[(name, mname)] = [P, N, UV, I, None, off, TH]
     # ---- ambient occlusion -> COLOR_0
     if ao is not None and occ_P:
         from ao import compute_ao
@@ -973,6 +977,10 @@ def builder_to_glb(builder, materials, path, asset_extras=None, root_name='Root'
         pts = np.vstack([prim_data[k][0] + prim_data[k][5] for k in keys])
         nrm = np.vstack([prim_data[k][1] for k in keys])
         vis = compute_ao(OP, OI, pts, nrm, rays=ao.get('rays', 48), max_dist=ao.get('max_dist', 5.0))
+        thin = np.concatenate([prim_data[k][6] for k in keys])
+        if np.any(thin):        # thin double-sided surfaces (lattice, rails, nets) see both hemispheres
+            vis2 = compute_ao(OP, OI, pts[thin], -nrm[thin], rays=ao.get('rays', 48), max_dist=ao.get('max_dist', 5.0))
+            vis[thin] = np.maximum(vis[thin], vis2)
         floor = ao.get('floor', 0.35)
         gamma = ao.get('gamma', 1.0)
         shade = floor + (1.0 - floor) * np.clip(vis, 0, 1) ** gamma
@@ -990,7 +998,7 @@ def builder_to_glb(builder, materials, path, asset_extras=None, root_name='Root'
         for mname in builder.nodes[name].keys():
             if (name, mname) not in prim_data:
                 continue
-            P, N, UV, I, C, _ = prim_data[(name, mname)]
+            P, N, UV, I, C = prim_data[(name, mname)][:5]
             if len(P) > 65535:
                 start = 0
                 while start < len(I):

@@ -74,8 +74,10 @@ def compute_ao(occluder_P, occluder_I, pts, nrms, rays=48, max_dist=5.0, eps=0.0
         t1r = c * t1 + sn * t2; t2r = -sn * t1 + c * t2
         D = (base[None, :, 0:1] * t1r[:, None, :] + base[None, :, 1:2] * t2r[:, None, :] +
              base[None, :, 2:3] * nn[:, None, :])                         # (m, rays, 3)
-        O = np.repeat(p + nn * eps, rays, axis=0)
         Dr = D.reshape(-1, 3)
+        # nudge each origin along its ray: a vertex in a concave corner otherwise starts exactly on the
+        # neighbouring face and every ray "hits" it at distance 0
+        O = np.repeat(p + nn * eps, rays, axis=0) + Dr * 0.01
         locs, ray_idx, tri_idx = inter.intersects_location(O, Dr, multiple_hits=False)
         occl = np.zeros(m * rays)
         if len(ray_idx):

@@ -103,7 +103,7 @@ def section(B, nrows=24):
 
 
 def stations():
-    Bs = list(np.arange(0.35, 12.0, 0.75)) + list(np.arange(12.0, 40.0, 1.6)) + list(np.arange(40.0, 152.0, 5.0)) + \
+    Bs = list(np.arange(0.35, 12.0, 1.0)) + list(np.arange(12.0, 40.0, 2.0)) + list(np.arange(40.0, 152.0, 5.0)) + \
         list(np.arange(152.0, STEP_B0, 2.4)) + list(np.arange(STEP_B0, STEP_B1 + 0.01, 0.6)) + \
         list(np.arange(STEP_B1 + 1.2, TRANSOM_BOT[0], 2.0)) + [TRANSOM_BOT[0]]
     return sorted(set(round(b, 3) for b in Bs))

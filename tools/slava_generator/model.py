@@ -67,17 +67,42 @@ class Model:
         self.deck_marks = []
         self.hull_marks = []
         self.decals = OrderedDict()
-        self._cursor = [0, 968, 0]
+        self._sky = [[0, 968, st.W]]          # skyline of the decal area: [x, first free row, width]
         self.hull = None
 
     def alloc(self, name, w, h, painter):
-        x, y, rh = self._cursor
-        if x + w > st.W:
-            x = 0; y += rh + 2; rh = 0
-        if y + h > st.SWATCH_Y0 - 2:
+        """place a w x h decal in the RECT area (skyline packing: lowest free spot, then leftmost)."""
+        fw, fh = w + 2, h + 2                 # 2 px gutter against mip bleeding
+        best = None
+        for i, (sx, _, _) in enumerate(self._sky):
+            if sx + fw > st.W:
+                break
+            y, rem, j = 0, fw, i
+            while rem > 0:
+                y = max(y, self._sky[j][1]); rem -= self._sky[j][2]; j += 1
+            if y + h <= st.SWATCH_Y0 - 2 and (best is None or (y, sx) < (best[1], best[0])):
+                best = (sx, y)
+        if best is None:
             raise RuntimeError('atlas full at ' + name)
+        x, y = best
+        sky = []
+        for (sx, sy, sw) in self._sky:            # cut the covered span out of the skyline
+            if sx + sw <= x or sx >= x + fw:
+                sky.append([sx, sy, sw])
+                continue
+            if sx < x:
+                sky.append([sx, sy, x - sx])
+            if sx + sw > x + fw:
+                sky.append([x + fw, sy, sx + sw - x - fw])
+        sky.append([x, y + fh, fw])
+        sky.sort()
+        self._sky = []
+        for s in sky:                              # merge neighbours at the same height
+            if self._sky and self._sky[-1][1] == s[1] and self._sky[-1][0] + self._sky[-1][2] == s[0]:
+                self._sky[-1][2] += s[2]
+            else:
+                self._sky.append(s)
         rect = (x, y, x + w, y + h)
-        self._cursor = [x + w + 2, y, max(rh, h)]
         self.layout.add(name, (rect[0] + 1, rect[1] + 1, rect[2] - 1, rect[3] - 1))
         self.decals[name] = (rect, painter)
         return name

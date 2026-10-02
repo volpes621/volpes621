@@ -15,12 +15,15 @@ from texkit import srgb, value_noise
 from hull import zB, Z_BOW, Z_STERN, LOA, SHEER, DECK_HB, deck_y, section, STEP_B0, STEP_B1, QD_Y, MAIN_Y
 from kit import *
 import model as S2
+import detail as D
+import antennas as A
+import deckgear as G
 
 PAL = st.PAL
 
 PENNANT = '121'
 STARS_ON_CAPS = True
-AO = dict(max_len=3.0, min_area=2.5, rays=64, max_dist=6.0, floor=0.25, gamma=2.0)
+AO = dict(max_len=4.0, min_area=2.5, rays=64, max_dist=6.0, floor=0.25, gamma=2.0)
 SHIP_NAME = 'МОСКВА'
 
 
@@ -388,6 +391,7 @@ def paint_top_dome(L, rect):
 
 
 def register_decals(m):
+    D.register(m)
     big = st.FONT_BIG
     m.alloc('pennant', 448, 160, lambda L, r: paint_text(L, r, PENNANT, PAL['white'], outline=PAL['black'] * 1.3,
                                                          stroke=2, font_path=big, size_frac=0.98, spacing=6))
@@ -410,6 +414,7 @@ def register_decals(m):
     m.alloc('louvre', 64, 96, paint_louvre_panel)
     m.alloc('vlouvre', 256, 128, paint_vert_louvre)
     m.alloc('dome', 128, 128, paint_top_dome)
+    A.register(m)
 
 
 # =============================================================================================
@@ -515,13 +520,11 @@ def forecastle(m):
     # windlasses (B 18.9, x 1.3) and chain stoppers
     for s in (1, -1):
         y = dk(18.9, 1.3)
-        c.add(c.sw('dark'), cylinder(0.62, 0.75, seg=12), xf=M(P3(18.9, s * 1.3, y - 0.1)))
-        c.add(c.sw('dark'), cylinder(0.35, 0.3, seg=10), xf=M(P3(18.9, s * 1.3, y + 0.65)))
-        c.add(c.paint, box(1.0, 0.75, 1.4, center=(0, 0, 0)), xf=M(P3(18.9, s * 2.35, y + 0.28)))
+        G.windlass(c, P3(18.9, s * 1.3, y - 0.05), s)
         for Bs_ in (8.5, 12.0):
             t = (Bs_ - 4.6) / (18.9 - 4.6)
             x = s * (2.6 - t * 1.3)
-            c.add(c.sw('dark'), box(0.55, 0.32, 0.9, center=(0, 0, 0)), xf=M(P3(Bs_, x, dk(Bs_, x) + 0.1)))
+            G.chain_stopper(c, P3(Bs_, x, dk(Bs_, x) - 0.03), (-1.3 * s, 0, -(18.9 - 4.6)))
     # breakwater: curved V from (B 26.0, +-6.9) to the apex (B 20.0, 0); 1.75 m tall at the apex
     pts = [(26.0, 6.9), (24.6, 6.55), (23.2, 5.9), (22.0, 4.7), (21.0, 3.1), (20.3, 1.4), (20.0, 0.0)]
     for s in (1, -1):
@@ -541,7 +544,7 @@ def forecastle(m):
             bollard(c, P3(B, s * x, dk(B, x) - 0.05), along=(0, 0, 1))
     for B, x in ((34.2, 8.8), (32.3, 8.8), (33.2, 7.5), (34.2, 6.1), (32.2, 6.1), (33.2, 4.8), (23.6, 4.2)):
         for s in (1, -1):
-            vent(c, P3(B, s * x, dk(B, x) - 0.05), r=0.32, h=0.7, mushroom=(B < 30))
+            G.round_vent(c, P3(B, s * x, dk(B, x) - 0.05), r=0.34, h=0.62)
 
 
 def ak130(m):
@@ -554,49 +557,13 @@ def ak130(m):
     yd = dk(Bc)
     c.add(c.paint, cylinder(3.5, ybase - yd + 0.4, seg=28, y0=yd - 0.4), xf=M(P3(Bc, 0, 0)))
     c.add(c.deck, cylinder(3.5, 0.01, seg=28, caps=(False, True), y0=ybase - 0.01), xf=M(P3(Bc, 0, 0)))
-    arc = []
-    for k in range(15):
-        a = math.radians(-130 + k * (260 / 14.0))
-        arc.append((Bc - 4.4 * math.cos(a), 4.4 * math.sin(a)))
-    for (Ba, xa), (Bb, xb) in zip(arc[:-1], arc[1:]):
-        ya, yb_ = dk(Ba, xa) - 0.1, dk(Bb, xb) - 0.1
-        top = ybase - 0.6
-        q = _quad(P3(Ba, xa, ya), P3(Bb, xb, yb_), P3(Bb, xb, top), P3(Ba, xa, top),
-                  uv=[(0, 1), (2.0, 1), (2.0, 0), (0, 0)])
-        c.add(c.band('LOUVER', 3.0), q)
+    G.splash_shield(c, Bc, 4.4, -130, 130, lambda B, x: dk(B, x) - 0.1, ybase - 0.6)
     # turret (training node)
     o = P3(Bc, 0, ybase)
     b.push('AK130_Turret', parent='Hull', translation=tuple(o))
-    secs = []
-    for h, sc in ((0.0, 1.0), (0.3, 1.04), (1.6, 1.05), (2.6, 0.97), (3.25, 0.8), (3.55, 0.5), (3.62, 0.08)):
-        ring = []
-        for k in range(24):
-            a = 2 * math.pi * k / 24
-            ca, sa = math.cos(a), math.sin(a)
-            ex = 0.6
-            x = 2.55 * sc * np.sign(ca) * abs(ca) ** ex
-            zz = 3.0 * sc * np.sign(sa) * abs(sa) ** ex
-            zz = min(zz, 2.65) - 0.1
-            ring.append((x, ybase + h, zB(Bc) + zz))
-        secs.append(ring)
-    P, N, UV, I = loft(secs, closed=True, uvscale=1.0)
-    P, N, I = orient_outward(P, N, I, lambda p: np.array([0, ybase + 1.6, zB(Bc) - 0.2]))
-    c.add(c.paint, (P, N, UV, I))
-    c.add(c.paint, box(3.2, 2.0, 0.4, center=(0, ybase + 1.55, zB(Bc) + 2.55)))           # mantlet face
-    for s in (1, -1):
-        c.add(c.paint, box(0.4, 1.9, 1.6, center=(s * 2.6, ybase + 1.45, zB(Bc) + 0.1)))  # side boxes
-        decal(c, 'door', (s * 2.81, ybase + 1.4, zB(Bc) - 0.6), (s, 0, 0), 0.7, 1.4, offset=0.02)
-    c.add(c.paint, lathe([(0.0, 0.0), (0.55, 0.0), (0.55, 0.25), (0.42, 0.5), (0.0, 0.56)], seg=12),
-          xf=M(P3(Bc + 0.9, 0, ybase + 3.5)))                                             # sight cupola
-    c.add(c.sw('dark'), box(0.25, 0.25, 0.8, center=(0, 0, 0)), xf=M(P3(Bc + 1.2, 1.2, ybase + 3.45)))
-    b.push('AK130_Guns', parent='AK130_Turret', translation=tuple(P3(27.9, 0, 11.6)))
-    Rz = rot_x(math.pi / 2)          # local +y -> +z (forward)
-    for s in (1, -1):
-        ox = s * 0.75
-        c.add(c.paint, cylinder(0.62, 0.7, seg=14), xf=M(P3(27.9, ox, 11.6), Rz))
-        c.add(c.paint, cylinder(0.3, 1.8, seg=12, r_top=0.24), xf=M(P3(27.2, ox, 11.6), Rz))
-        c.add(c.paint, cylinder(0.18, 3.1, seg=10, r_top=0.16), xf=M(P3(25.4, ox, 11.6), Rz))
-        c.add(c.sw('dark'), cylinder(0.21, 0.5, seg=10), xf=M(P3(22.3, ox, 11.6), Rz))
+    D.ak130_turret(c, Bc, ybase)
+    b.push('AK130_Guns', parent='AK130_Turret', translation=tuple(P3(27.6, 0, 11.6)))
+    D.ak130_guns(c, 27.6, (0.78, -0.78), 11.6, 21.4)
     b.pop()
     b.pop()
 
@@ -608,23 +575,23 @@ def forward_deckhouse(m):
     c = m.ctx; b = m.b
     b.node('Superstructure')
     fd = sym_poly([(35.0, 1.6), (36.9, 3.65), (58.7, 3.65)])
-    house(c, fd, dmin(35.0, 58.7) - 0.3, 12.95, lip=0.12)
+    house(c, fd, dmin(35.0, 58.7) - 0.3, 12.95, lip=0.12, bevel=0.3, bevel_where=lambda B, x: B < 58.0)
     # raised gun deck between the AK-630s (ramp 40.9 -> 42.2, flat to 47.5)
     c.add(c.paint, extrude_x([(zB(40.9), 12.9), (zB(42.2), 14.1), (zB(47.5), 14.1), (zB(47.5), 12.9)], -1.6, 1.6))
     rail_poly(c, [(42.2, 1.6), (47.5, 1.6), (47.5, -1.6), (42.2, -1.6)], 14.1, sides=(0, 2))
-    side_strip(c, 'PORTS', 36.4, 58.0, 3.67, 11.15, 1.0)
-    side_strip(c, 'PORTS', 37.0, 58.0, 3.67, 8.6, 1.0)
-    end_strip(c, 'PORTS', 35.0, -1.5, 1.5, 11.0, 1.0, facing=1)
+    side_strip(c, 'PORTS', 37.4, 58.0, 3.67, 11.15, 1.0)
+    side_strip(c, 'PORTS', 37.4, 58.0, 3.67, 8.6, 1.0)
+    end_strip(c, 'PORTS', 35.0, -1.15, 1.15, 11.0, 1.0, facing=1)
     for s in (1, -1):
         door(c, 44.0, s * 3.67, dk(44.0, 3.6) - 0.05, (s, 0, 0))
         door(c, 55.6, s * 3.67, dk(55.6, 3.6) - 0.05, (s, 0, 0))
     rail_poly(c, [(36.9, 3.65), (58.6, 3.65), (58.6, -3.65), (36.9, -3.65), (35.0, -1.6), (35.0, 1.6)], 12.95,
               sides=(0, 2, 3, 4, 5))
-    ak630(c, P3(39.6, 0.0, 12.95), facing=0.0, name='AK630_1', parent='Superstructure')
-    ak630(c, P3(45.2, 0.0, 14.1), facing=0.0, name='AK630_2', parent='Superstructure')
+    D.ak630(c, P3(39.6, 0.0, 12.95), facing=0.0, name='AK630_1', parent='Superstructure')
+    D.ak630(c, P3(45.2, 0.0, 14.1), facing=0.0, name='AK630_2', parent='Superstructure')
     rbu6000(c, P3(52.3, 2.2, 12.95), facing=0.0, name='RBU6000_P', parent='Superstructure')
     rbu6000(c, P3(52.3, -2.2, 12.95), facing=0.0, name='RBU6000_S', parent='Superstructure')
-    bass_tilt(c, P3(57.3, 0.0, 12.95), facing=0.0, name='BassTilt_1', pedestal=2.4, parent='Superstructure')
+    D.bass_tilt(c, P3(57.3, 0.0, 12.95), facing=0.0, name='BassTilt_1', pedestal=2.4, parent='Superstructure')
     b.node('Superstructure')
     for B in (54.2, 50.4):
         for s in (1, -1):
@@ -638,8 +605,8 @@ def bridge(m):
     c = m.ctx; b = m.b
     b.node('Superstructure')
     y0 = dmin(58.6, 80.8) - 0.3
-    house(c, sym_poly([(58.6, 3.65), (80.75, 3.65)]), y0, 15.0, lip=0.12)           # BL1
-    house(c, sym_poly([(61.5, 4.85), (80.75, 4.85)]), y0, 17.5, lip=0.12)           # BL2
+    house(c, sym_poly([(58.6, 3.65), (80.75, 3.65)]), y0, 15.0, lip=0.12, bevel=0.3, bevel_where=lambda B, x: B < 60)  # BL1
+    house(c, sym_poly([(61.5, 4.85), (80.75, 4.85)]), y0, 17.5, lip=0.12, bevel=0.3, bevel_where=lambda B, x: B < 62)  # BL2
     # gallery deck with the bridge wings
     gal = sym_poly([(61.0, 5.2), (61.0, 7.25), (64.6, 7.25), (65.4, 6.2), (82.0, 6.2)])
     slab(c, gal, 17.5, 18.65)
@@ -647,7 +614,7 @@ def bridge(m):
     # bridge house: sloped front (top overhangs 0.5 m), chamfered front corners
     bot = sym_poly([(61.25, 2.6), (63.15, 5.3), (73.8, 5.3)])
     top = sym_poly([(60.75, 2.83), (62.7, 5.3), (73.8, 5.3)])
-    house(c, bot, 18.65, 20.0, top_poly_Bx=top, lip=0.14)
+    house(c, bot, 18.65, 20.0, top_poly_Bx=top, lip=0.14, bevel=0.25, bevel_where=lambda B, x: B > 73)
     rail_poly(c, top, 20.0, sides=(0, 1, 2, 4, 5))
     # windows
     nrm = normalize(np.array([0.0, 0.5 / 1.35, 1.0]))
@@ -667,28 +634,20 @@ def bridge(m):
     side_strip(c, 'PORTS', 67.5, 73.0, 5.32, 18.8, 0.9)
     side_strip(c, 'PORTS', 62.0, 80.0, 4.87, 15.6, 1.0)
     side_strip(c, 'PORTS', 62.5, 80.0, 4.87, 12.6, 1.0)
-    end_strip(c, 'PORTS', 58.6, -3.4, 3.4, 13.6, 1.0, facing=1)
+    end_strip(c, 'PORTS', 58.6, -3.1, 3.1, 13.6, 1.0, facing=1)
     for s in (1, -1):
         door(c, 63.0, s * 4.87, 15.0, (s, 0, 0))
         door(c, 78.5, s * 4.87, 15.0, (s, 0, 0))
         door(c, 76.0, s * 3.67, dk(76.0, 3.6) - 0.05, (s, 0, 0))
     # Kite Screech (MR-184) director on the bridge roof
-    o = P3(67.7, 0, 20.0)
-    b.push('KiteScreech', parent='Superstructure', translation=tuple(o))
-    c.add(c.paint, cylinder(0.55, 2.0, seg=12, r_top=0.42), xf=M(o))
-    c.add(c.paint, box(2.0, 1.3, 1.5, center=(0, 2.65, 0.2)), xf=M(o))
-    c.add(c.paint, box(1.0, 0.7, 1.0, center=(-1.1, 2.6, 0.1)), xf=M(o))
-    c.add(c.sw('light'), lathe([(0.0, 0.0), (0.5, 0.07), (0.95, 0.3), (1.05, 0.42)], seg=16),
-          xf=M(o + np.array([0, 2.75, 1.2]), rot_x(math.pi / 2)))
-    c.add(c.sw('dark'), tube_path([o + np.array([0, 2.75, 1.2]), o + np.array([0, 2.75, 2.6])], 0.06, seg=4))
-    b.pop()
+    D.kite_screech(c, P3(67.7, 0, 20.0))
     b.node('Superstructure')
-    c.add(c.sw('white'), cylinder(0.55, 1.0, seg=12), xf=M(P3(71.6, 1.6, 20.0)))
-    c.add(c.sw('white'), sphere(0.55, seg=12, rings=4, hemi=True), xf=M(P3(71.6, 1.6, 21.0)))
+    G.radome(c, P3(71.6, 1.6, 20.0), r=0.55, h=1.0)
     for (B, x) in ((64.1, 3.8), (68.6, -3.8), (71.0, 4.3)):
         whip(c, P3(B, x, 20.0), 6.0, r=0.05)
     # low deckhouse aft of the bridge block (B 80.75-85.4, +-3.75, roof 9.6) with intake louvres
-    house(c, sym_poly([(80.7, 3.75), (85.4, 3.75)]), dmin(80.7, 85.4) - 0.3, 9.6, lip=0.12)
+    house(c, sym_poly([(80.7, 3.75), (85.4, 3.75)]), dmin(80.7, 85.4) - 0.3, 9.6, lip=0.12, bevel=0.25,
+          bevel_where=lambda B, x: B > 85)
     for xx in (-1.6, 1.6):
         decal(c, 'louvre', P3(85.42, xx, 8.2), (0, 0, -1), 1.6, 2.2)
     rail_poly(c, sym_poly([(80.7, 3.75), (85.4, 3.75)]), 9.6, sides=(1, 2, 3))
@@ -710,7 +669,7 @@ def foremast(m):
     b.node('Superstructure')
     bot = sym_poly([(73.44, 4.06), (80.8, 4.1)])
     top = sym_poly([(77.2, 1.35), (80.3, 1.35)])
-    house(c, bot, 18.6, 31.2, top_poly_Bx=top, top='deck')
+    house(c, bot, 18.6, 31.2, top_poly_Bx=top, top='deck', bevel=0.3)
     slab(c, sym_poly([(76.6, 1.9), (80.9, 1.9)]), 31.2, 31.45)
     rail_poly(c, sym_poly([(76.6, 1.9), (80.9, 1.9)]), 31.45)
     # side balconies on the pyramid
@@ -727,65 +686,20 @@ def foremast(m):
         slab(c, poly, 20.8, 21.05)
         rail_poly(c, [(75.8, s * 7.0), (80.3, s * 7.0)], 21.05, closed=False, inset=0.0)
         for B in (76.8, 79.3):
-            c.add(c.sw('white'), cylinder(0.45, 0.8, seg=10), xf=M(P3(B, s * 5.9, 21.05)))
-            c.add(c.sw('white'), sphere(0.45, seg=10, rings=4, hemi=True), xf=M(P3(B, s * 5.9, 21.85)))
+            G.radome(c, P3(B, s * 5.9, 21.05), r=0.45, h=0.8, seg=10)
     # ladders on the faces
     for s in (1, -1):
         ladder(c, P3(80.85, s * 2.4, 18.7), P3(80.4, s * 1.0, 31.1), 0.45, normal=(0, 0, -1))
-    # Fregat stalk (octagonal) and the rotating radar
-    c.add(c.paint, cylinder(0.62, 2.2, seg=8, y0=31.4, smooth=False), xf=M(P3(78.15, 0, 0)))
-    o = P3(78.15, 0, 33.6)
-    b.push('Fregat_Radar', parent='Superstructure', translation=tuple(o))
-    c.add(c.paint, cylinder(0.5, 0.8, seg=10), xf=M(o))
-    c.add(c.paint, box(1.4, 0.9, 1.6, center=(0, 1.25, 0)), xf=M(o))
-    # main reflector: B 74.6-79.0, h 32.6-37.6, top leaning forward 35 deg
-    tl = math.radians(35)
-    up = np.array([0, math.cos(tl), math.sin(tl)])
-    ctr = P3(76.6, 0, 35.1)
-    w2, hh = 2.6, 5.6
-    corners = [ctr - np.array([w2, 0, 0]) - up * hh / 2, ctr + np.array([w2, 0, 0]) - up * hh / 2,
-               ctr + np.array([w2, 0, 0]) + up * hh / 2, ctr - np.array([w2, 0, 0]) + up * hh / 2]
-    lattice_quad(c, corners)
-    for (pa, pb) in ((corners[0], corners[1]), (corners[3], corners[2]), (corners[0], corners[3]), (corners[1], corners[2])):
-        c.add(c.paint, beam(pa, pb, 0.14, 0.14))
-    c.add(c.paint, beam(ctr - up * hh / 2, ctr + up * hh / 2, 0.16, 0.16))
-    c.add(c.paint, beam(o + np.array([0, 1.4, 0.6]), ctr - np.array([0, 0.2, -0.1]), 0.3, 0.3))
-    # feed horn arm and the small IFF antenna on the aft side
-    c.add(c.paint, tube_path([o + np.array([0, 1.6, 0.4]), o + np.array([0, 2.3, -1.4]), o + np.array([0, 2.0, -2.6])], 0.13, seg=5))
-    c2 = o + np.array([0, 2.0, -2.6])
-    lattice_quad(c, [c2 + np.array([1.5, -0.7, 0.0]), c2 + np.array([-1.5, -0.7, 0.0]),
-                     c2 + np.array([-1.5, 0.7, -0.25]), c2 + np.array([1.5, 0.7, -0.25])])
-    b.pop()
-    b.node('Superstructure')
-    # Front Door (Argon-1164) cantilevered off the pyramid front at h 25-29
-    o = P3(74.2, 0, 26.4)
-    b.push('FrontDoor', parent='Superstructure', translation=tuple(o))
-    fB = tower_front_B(26.4)
-    c.add(c.paint, box(1.6, 1.6, fB - 73.0, center=(0, 0, 0)), xf=M(P3((fB + 73.0) / 2, 0, 26.6)))
-    c.add(c.paint, box(2.2, 1.1, 1.1, center=(0, 0, 0)), xf=M(P3(73.3, 0, 27.3)))
-    segs = 6
-    pts_l, pts_r = [], []
-    for k in range(segs + 1):
-        t = k / segs
-        a_ = math.radians(-62 + 124 * t)
-        y = 27.3 + 2.45 * math.sin(a_)
-        Bv = 71.6 + 1.5 * (1 - math.cos(a_))
-        pts_l.append(P3(Bv, -1.9, y)); pts_r.append(P3(Bv, 1.9, y))
-    for k in range(segs):
-        lattice_quad(c, [pts_l[k], pts_r[k], pts_r[k + 1], pts_l[k + 1]])
-    for k in range(segs):
-        c.add(c.paint, beam(pts_l[k], pts_l[k + 1], 0.13, 0.13)); c.add(c.paint, beam(pts_r[k], pts_r[k + 1], 0.13, 0.13))
-    c.add(c.paint, beam(pts_l[0], pts_r[0], 0.13, 0.13)); c.add(c.paint, beam(pts_l[-1], pts_r[-1], 0.13, 0.13))
-    c.add(c.paint, beam(P3(71.7, 0, 27.3), P3(73.0, 0, 27.3), 0.25, 0.25))
-    c.add(c.paint, beam(P3(72.9, 0, 25.4), P3(72.9, 0, 29.2), 0.2, 0.2))
-    b.pop()
-    b.node('Superstructure')
+    # tapered Fregat stalk, the rotating Fregat radar and the Front Door director
+    c.add(c.paint, lathe([(0.72, 0.0), (0.72, 0.15), (0.6, 0.25), (0.55, 2.0), (0.62, 2.2)], seg=14), xf=M(P3(78.15, 0, 31.4)))
+    A.fregat(c, P3(78.15, 0, 33.6))
+    A.front_door(c, tower_front_B)
     # cross yard (lattice girder) at B 81.6, h 28.85, x +-7.1 with lattice ECM towers at x +-3.4
     truss(c, P3(81.6, -7.1, 28.85), P3(81.6, 7.1, 28.85), 0.9, 0.9, rep=4.0)
     for s in (1, -1):
         lattice_tower(c, P3(80.4, s * 3.4, 27.2), 0.45, 0.65, 3.6, rep=3.0)
         slab(c, [(79.8, s * 4.0), (81.0, s * 4.0), (81.0, s * 2.8), (79.8, s * 2.8)], 30.8, 30.95)
-        c.add(c.sw('white'), cylinder(0.5, 0.7, seg=10), xf=M(P3(80.4, s * 3.4, 30.95)))
+        G.radome(c, P3(80.4, s * 3.4, 30.95), r=0.5, h=0.7, seg=10)
     # aft lattice girder and the lattice topmast (to 39.5 m)
     truss(c, P3(80.3, 0, 30.6), P3(88.1, 0, 30.6), 1.3, 1.1, rep=4.0)
     lattice_tower(c, P3(84.4, 0, 31.2), 0.25, 0.45, 8.3, rep=3.0)
@@ -815,13 +729,13 @@ def launcher_tube(m, Bf, x, dy, node=None):
     d = normalize(np.array([0.0, math.sin(TUBE_EL), math.cos(TUBE_EL)]))     # forward-up
     L = TUBE_LEN_B / math.cos(TUBE_EL)
     prof = [(0.0, -0.32), (0.55, -0.27), (0.92, -0.13), (1.06, 0.0), (1.08, 0.15), (1.08, 2.0), (1.0, 2.12),
-            (0.9, 2.3), (0.9, 6.0), (0.86, L - 0.6), (0.72, L - 0.25), (0.45, L - 0.05), (0.0, L)]
-    P, N, UV, I = lathe(prof, seg=18, uvscale=1.0)
+            (0.9, 2.3), (0.86, L - 0.6), (0.72, L - 0.25), (0.45, L - 0.05), (0.0, L)]
+    P, N, UV, I = lathe(prof, seg=16, uvscale=1.0)
     R = frame_from_dir(-d)               # local +z points aft along the axis
     Mx = np.eye(4); Mx[:3, :3] = R @ rot_x(math.pi / 2); Mx[:3, 3] = p_front
     c.add(c.paint, (P, N, UV, I), xf=Mx, node=node)
     for sring in (5.6, 6.1):
-        c.add(c.paint, cylinder(0.94, 0.12, seg=18, caps=(False, False)), xf=M(p_front - d * sring, R @ rot_x(-math.pi / 2)), node=node)
+        c.add(c.paint, cylinder(0.94, 0.12, seg=16, caps=(False, False)), xf=M(p_front - d * sring, R @ rot_x(-math.pi / 2)), node=node)
     # front cover hinge/latches
     c.add(c.sw('mid'), box(0.25, 0.5, 0.35, center=(0, 0, 0)), xf=M(p_front + np.array([0, 1.05, -0.35]), R), node=node)
     # red star painted on the cover (Moskva)
@@ -834,63 +748,19 @@ def launchers(m):
     b.node('Launchers', parent=None)
     for s in (1, -1):
         xin, xout = (4.95, 9.65)
-        xa, xb = (xin, xout) if s > 0 else (-xout, -xin)
         for i, Bf in enumerate(TUBE_FRONTS):
             for (xo, dy) in TUBES_X:
                 launcher_tube(m, Bf, s * xo, dy)
-            yd_f = dk(Bf + 0.8, 7.0)
-            # (a) front pylon under the covers
-            ytop = tube_axis_y(Bf, Bf + 0.85) - 1.06
-            c.add(c.paint, box(xb - xa, ytop - yd_f + 0.3, 0.8, center=(0, 0, 0)),
-                  xf=M(P3(Bf + 0.85, (xa + xb) / 2, (ytop + yd_f - 0.3) / 2)))
-            ladder(c, P3(Bf + 0.85, s * 9.67, yd_f), P3(Bf + 0.85, s * 9.67, ytop - 0.2), 0.45, normal=(s, 0, 0))
-            # (b) sloped cradle under both tubes
-            Ba, Bb = Bf + 1.25, Bf + 11.0
-            ya = tube_axis_y(Bf, Ba) - 0.98; yb = tube_axis_y(Bf, Bb) - 0.92
-            poly = [(zB(Ba), ya), (zB(Bb), yb), (zB(Bb), yb - 0.45), (zB(Ba), ya - 0.45)]
-            c.add(c.paint, extrude_x(poly, xa + 0.05, xb - 0.05))
-            # (c) middle support box with the efflux opening
-            B0, B1 = Bf + 2.35, Bf + 7.65
-            ydm = dmin(B0, B1, 7.0) - 0.2
-            ytop_m = ydm + 2.55
-            c.add(c.paint, box(xb - xa, ytop_m - ydm, B1 - B0, center=(0, 0, 0)),
-                  xf=M(P3((B0 + B1) / 2, (xa + xb) / 2, (ytop_m + ydm) / 2)))
-            decal(c, 'vent', P3((B0 + B1) / 2 + 0.1, s * (xout + 0.01), ydm + 1.3), (s, 0, 0), 4.3, 1.6)
-            # cradle legs between box and cradle
-            for Bl in (B0 + 0.6, B1 - 0.6):
-                yl = tube_axis_y(Bf, Bl) - 1.4
-                for xl in (6.0, 8.65):
-                    c.add(c.paint, box(0.3, max(0.1, yl - ytop_m), 0.3, center=(0, 0, 0)),
-                          xf=M(P3(Bl, s * xl, (yl + ytop_m) / 2)))
-            # (d) rear support
-            Br = Bf + 11.1
-            yr = tube_axis_y(Bf, Br) - 0.84
-            ydr = dk(Br, 7.0) - 0.2
-            c.add(c.paint, box(xb - xa, max(0.2, yr - ydr), 1.0, center=(0, 0, 0)),
-                  xf=M(P3(Br, (xa + xb) / 2, (yr + ydr) / 2)))
-            rail_poly(c, [(B0, s * xout), (B1, s * xout)], ytop_m, closed=False, inset=0.0)
+            D.launcher_support(
+                c, Bf, s, lambda B, dy, Bf=Bf: tube_axis_y(Bf, B, dy), lambda B: dk(B, 7.0), x_in=xin, x_out=xout,
+                tubes=TUBES_X,
+                rail=lambda pts: railing_pts(c, [P3(B, x, y) for (B, x, y) in pts]),
+                ladder_fn=lambda a, b_, s_: ladder(c, a, b_, 0.45, normal=(s_, 0, 0)))
 
 
 # =============================================================================================
 # midships 01-level deckhouse, main mast, Top Pair (sheet 6)
 # =============================================================================================
-def curved_lattice(m, center, right, up, normal, w, h, bend, nseg=3, rep=5.0):
-    c = m.ctx
-    center = np.asarray(center, float); right = normalize(right); up = normalize(up); normal = normalize(normal)
-    pb, pt = [], []
-    for k in range(nseg + 1):
-        t = -1 + 2 * k / nseg
-        off = right * (t * w / 2) - normal * (bend * t * t)
-        pb.append(center + off - up * h / 2)
-        pt.append(center + off + up * h / 2)
-    for k in range(nseg):
-        lattice_quad(c, [pb[k], pb[k + 1], pt[k + 1], pt[k]], rep=rep)
-    for k in range(nseg):
-        c.add(c.paint, beam(pb[k], pb[k + 1], 0.12, 0.12))
-        c.add(c.paint, beam(pt[k], pt[k + 1], 0.12, 0.12))
-    c.add(c.paint, beam(pb[0], pt[0], 0.12, 0.12)); c.add(c.paint, beam(pb[-1], pt[-1], 0.12, 0.12))
-
-
 def mainmast(m):
     c = m.ctx; b = m.b
     b.node('Superstructure')
@@ -901,21 +771,22 @@ def mainmast(m):
     side_strip(c, 'PORTS', 87.5, 102.0, 9.92, 7.6, 1.0)
     for s in (1, -1):
         door(c, 94.8, s * 9.92, 6.85, (s, 0, 0))
-    ak630(c, P3(95.5, 9.0, 9.5), facing=math.radians(20), name='AK630_3', parent='Superstructure')
-    ak630(c, P3(95.5, -9.0, 9.5), facing=math.radians(-20), name='AK630_4', parent='Superstructure')
-    ak630(c, P3(101.25, 9.0, 9.5), facing=math.radians(160), name='AK630_5', parent='Superstructure')
-    ak630(c, P3(101.25, -9.0, 9.5), facing=math.radians(-160), name='AK630_6', parent='Superstructure')
-    bass_tilt(c, P3(88.4, 8.4, 9.5), facing=math.radians(60), name='BassTilt_2', pedestal=1.3, parent='Superstructure')
-    bass_tilt(c, P3(88.4, -8.4, 9.5), facing=math.radians(-60), name='BassTilt_3', pedestal=1.3, parent='Superstructure')
+    D.ak630(c, P3(95.5, 9.0, 9.5), facing=math.radians(20), name='AK630_3', parent='Superstructure')
+    D.ak630(c, P3(95.5, -9.0, 9.5), facing=math.radians(-20), name='AK630_4', parent='Superstructure')
+    D.ak630(c, P3(101.25, 9.0, 9.5), facing=math.radians(160), name='AK630_5', parent='Superstructure')
+    D.ak630(c, P3(101.25, -9.0, 9.5), facing=math.radians(-160), name='AK630_6', parent='Superstructure')
+    D.bass_tilt(c, P3(88.4, 8.4, 9.5), facing=math.radians(60), name='BassTilt_2', pedestal=1.3, parent='Superstructure')
+    D.bass_tilt(c, P3(88.4, -8.4, 9.5), facing=math.radians(-60), name='BassTilt_3', pedestal=1.3, parent='Superstructure')
     b.node('Superstructure')
     for s in (1, -1):
         raft_rack(c, P3(97.6, s * 9.0, 9.5), n=2, along=(0, 0, -1), spacing=0.8)
         raft_rack(c, P3(91.0, s * 8.8, 9.5), n=2, along=(0, 0, -1), spacing=0.8)
     c.add(c.paint, cylinder(1.6, 0.6, seg=16), xf=M(P3(90.1, -2.6, 9.5)))
     # main mast base block, tower wedge and column
-    house(c, sym_poly([(95.75, 4.85), (103.1, 4.85)]), 9.4, 12.4, lip=0.12)
-    house(c, sym_poly([(96.6, 4.4), (103.1, 4.4)]), 12.3, 14.5)
-    house(c, sym_poly([(96.6, 4.4), (103.1, 4.4)]), 14.5, 19.5, top_poly_Bx=sym_poly([(97.75, 1.8), (103.0, 1.8)]))
+    house(c, sym_poly([(95.75, 4.85), (103.1, 4.85)]), 9.4, 12.4, lip=0.12, bevel=0.25, bevel_where=lambda B, x: B < 103)
+    house(c, sym_poly([(96.6, 4.4), (103.1, 4.4)]), 12.3, 14.5, bevel=0.25, bevel_where=lambda B, x: B < 103)
+    house(c, sym_poly([(96.6, 4.4), (103.1, 4.4)]), 14.5, 19.5, top_poly_Bx=sym_poly([(97.75, 1.8), (103.0, 1.8)]), bevel=0.25,
+          bevel_where=lambda B, x: B < 103)
     rail_poly(c, sym_poly([(97.75, 1.8), (103.0, 1.8)]), 19.5)
     for s in (1, -1):
         decal(c, 'louvre', P3(95.73, s * 2.2, 10.9), (0, 0, 1), 1.4, 2.2)
@@ -930,25 +801,13 @@ def mainmast(m):
         for (Bp, xp, yp) in ((98.9, 1.45, 20.3), (103.4, 1.45, 20.3)):
             sphere_at(c, 'mid', P3(Bp, s * xp, yp), 0.72)
         c.add(c.paint, beam(P3(98.9, s * 1.45, 19.5), P3(98.9, s * 1.45, 19.65), 0.3, 0.3))
-    c.add(c.paint, cylinder(0.95, 8.1, seg=16, y0=19.5), xf=M(P3(101.1, 0, 0)))
-    ladder(c, P3(100.15, 0, 19.6), P3(100.15, 0, 27.4), 0.45, normal=(0, 0, 1))
-    # Top Pair (MR-800 Voskhod), rotating
-    o = P3(101.1, 0, 27.6)
-    b.push('TopPair_Radar', parent='Superstructure', translation=tuple(o))
-    c.add(c.paint, cylinder(0.85, 0.8, seg=12), xf=M(o))
-    c.add(c.paint, box(1.7, 1.4, 2.0, center=(0, 1.5, 0)), xf=M(o))
-    tl = math.radians(20)
-    up = np.array([0, math.cos(tl), -math.sin(tl)])
-    nrm = np.array([0, math.sin(tl), math.cos(tl)])
-    ctr = P3(98.6, 0, 26.8)
-    curved_lattice(m, ctr, (1, 0, 0), up, nrm, 5.0, 10.0, 0.55, nseg=3)
-    c.add(c.paint, beam(o + np.array([0, 1.4, 0.9]), ctr - nrm * 0.4, 0.3, 0.3))
-    c.add(c.paint, beam(ctr - up * 4.6 + nrm * 0.1, ctr - up * 2.4 + nrm * 2.4, 0.16, 0.16))
-    ctr2 = P3(105.0, 0, 25.6)
-    curved_lattice(m, ctr2, (-1, 0, 0), (0, 1, 0), (0, 0, -1), 4.6, 3.6, 1.6, nseg=4)
-    c.add(c.paint, beam(o + np.array([0, 1.0, -0.9]), ctr2 + np.array([0, 0, 0.6]), 0.3, 0.3))
-    c.add(c.paint, tube_path([ctr2 + np.array([0, -1.7, 0.4]), ctr2 + np.array([0, -1.5, -1.4]), ctr2 + np.array([0, 0, -1.7])], 0.13, seg=5))
-    b.pop()
+    # column with base and head flanges and a mid band, as one lathe (no buried vertices for the AO bake)
+    c.add(c.paint, lathe([(1.03, 19.5), (1.03, 19.62), (0.95, 19.62), (0.95, 24.05), (1.02, 24.05), (1.02, 24.15),
+                          (0.95, 24.15), (0.95, 25.42), (1.03, 25.42), (1.03, 25.6), (0.0, 25.6)], seg=18),
+          xf=M(P3(101.1, 0, 0)))
+    ladder(c, P3(100.15, 0, 19.6), P3(100.15, 0, 25.4), 0.45, normal=(0, 0, 1))
+    # Top Pair (MR-800 Voskhod), rotating on the column top
+    A.top_pair(c, P3(101.1, 0, 25.6))
 
 
 # =============================================================================================
@@ -959,113 +818,61 @@ def funnel(m):
     b.node('Superstructure')
     ylo = dmin(103.1, 118.0, 6.0) - 0.3
     # intake block between the mast and the funnel
-    house(c, sym_poly([(103.1, 5.4), (106.8, 5.4)]), ylo, 14.1)
+    house(c, sym_poly([(103.1, 5.4), (106.8, 5.4)]), ylo, 14.1, lip=0.1, bevel=0.25)
     for s in (1, -1):
         decal(c, 'vlouvre', P3(104.95, s * 5.42, 11.0), (s, 0, 0), 3.2, 4.6)
-    # lower casing: rear face leans forward
-    poly = [(zB(106.75), ylo), (zB(118.0), ylo), (zB(116.8), 15.1), (zB(106.75), 15.1)]
-    fl = extrude_x(poly, -5.9, 5.9)
-    c.add(c.paint, fl)
-    # stacks (x 1.25..5.75), grey lower part and dark top band
+    # lower casing: rear face leans forward, chamfered corners, rim at the top
+    house(c, sym_poly([(106.75, 5.9), (118.0, 5.9)]), ylo, 15.1, top_poly_Bx=sym_poly([(106.75, 5.9), (116.8, 5.9)]),
+          lip=0.12, bevel=0.35)
+    # two exhaust stacks: grey lower part, sooty upper part, raised uptakes with grilles
     for s in (1, -1):
         xa, xb = (1.25, 5.75) if s > 0 else (-5.75, -1.25)
-        lo = [(zB(106.75), 15.0), (zB(116.85), 15.0), (zB(116.55), 17.3), (zB(107.65), 17.3)]
-        hi = [(zB(107.65), 17.3), (zB(116.55), 17.3), (zB(116.4), 18.45), (zB(108.25), 18.75)]
-        c.add(c.paint, extrude_x(lo, xa, xb))
-        P, N, UV, I = extrude_x(hi, xa, xb)
-        c.add(c.sw('dark'), (P, N, UV, I))
-        # exhaust grille decal on the top
-        q = _quad(P3(116.3, xa + 0.15, 18.47), P3(116.3, xb - 0.15, 18.47), P3(108.4, xb - 0.15, 18.76),
-                  P3(108.4, xa + 0.15, 18.76), uv=[(0, 1), (0, 0), (1, 0), (1, 1)])
-        if s < 0:
-            q = _quad(P3(116.3, xa + 0.15, 18.47), P3(116.3, xb - 0.15, 18.47), P3(108.4, xb - 0.15, 18.76),
-                      P3(108.4, xa + 0.15, 18.76), uv=[(0, 0), (0, 1), (1, 1), (1, 0)])
-        Pq, Nq, UVq, Iq = q
-        Pq = Pq + np.array([0, 0.04, 0])
-        if np.cross(Pq[1] - Pq[0], Pq[2] - Pq[0])[1] < 0:
-            Iq = Iq[:, ::-1]
-        c.add(c.rect('funnel_top'), (Pq, np.tile([0, 1.0, 0], (4, 1)), UVq, Iq))
-        # rear lip
-        c.add(c.sw('dark'), extrude_x([(zB(116.4), 17.95), (zB(117.9), 17.95), (zB(117.9), 18.2), (zB(116.4), 18.2)], xa, xb))
+        lo_b = [(106.75, xb), (116.85, xb), (116.85, xa), (106.75, xa)]
+        lo_t = [(107.65, xb), (116.55, xb), (116.55, xa), (107.65, xa)]
+        hi_t = [(108.25, xb), (116.4, xb), (116.4, xa), (108.25, xa)]
+        house(c, lo_b, 15.0, 17.3, top_poly_Bx=lo_t, top=None, bevel=0.3)
+        house(c, lo_t, 17.3, 18.6, top_poly_Bx=hi_t, walls='dark', top='dark', bevel=0.3)
+        D.funnel_outlets(c, 108.25, 116.4, xa, xb, 18.6)
         # louvre panels on the casing sides: 3 rows x 6
         for row_y, hgt in ((7.9, 1.6), (10.0, 1.8), (12.3, 1.0)):
             for k in range(6):
                 Bc = 108.3 + k * 1.45
                 decal(c, 'louvre', P3(Bc, s * 5.92, row_y + hgt / 2), (s, 0, 0), 1.15, hgt)
-    house(c, sym_poly([(108.5, 1.25), (116.5, 1.25)]), 15.0, 16.6)
+        ladder(c, P3(117.2, s * 3.5, 15.1), P3(116.7, s * 3.5, 18.5), 0.45, normal=(0, 0, -1))
+    house(c, sym_poly([(108.5, 1.25), (116.5, 1.25)]), 15.0, 16.6, bevel=0.15)
+    rail_poly(c, sym_poly([(106.9, 5.75), (116.6, 5.75)]), 15.12, sides=(1, 3))
     decal(c, 'vlouvre', P3(106.73, 0, 12.3), (0, 0, 1), 9.0, 4.0)
     for s in (1, -1):
         door(c, 113.5, s * 5.92, dk(113.5, 5.9) - 0.05, (s, 0, 0))
-    # davit arms at the funnel's forward corners (lattice), port and starboard
-    for s in (1, -1):
-        for Bd in (107.4, 109.4):
-            truss(c, P3(Bd, s * 5.9, 17.6), P3(Bd, s * 8.6, 18.1), 0.5, 0.6, rep=3.0)
     # crane deckhouse (B 119.9-125.3) and crane
     cd = sym_poly([(119.9, 3.6), (125.3, 3.6)])
-    house(c, cd, dmin(119.9, 125.3) - 0.3, 9.45, lip=0.12)
+    house(c, cd, dmin(119.9, 125.3) - 0.3, 9.45, lip=0.12, bevel=0.25)
     rail_poly(c, cd, 9.45)
     for s in (1, -1):
         door(c, 122.6, s * 3.62, 6.85, (s, 0, 0))
-    o = P3(122.6, 0, 9.45)
-    b.push('Crane', parent='Superstructure', translation=tuple(o))
-    c.add(c.paint, cylinder(1.3, 0.9, seg=14), xf=M(o))
-    c.add(c.paint, box(2.2, 1.4, 2.6, center=(0, 1.6, 0.3)), xf=M(o))
-    c.add(c.paint, beam(P3(124.3, 0, 10.6), P3(124.6, 0, 16.4), 0.55, 0.55))
-    c.add(c.paint, beam(P3(124.75, 0, 16.6), P3(117.7, 0, 16.95), 0.45, 0.55))
-    c.add(c.paint, beam(P3(121.6, 0, 11.4), P3(118.6, 0, 16.7), 0.3, 0.3))
-    c.add(c.sw('dark'), tube_path([P3(117.9, 0, 16.7), P3(117.9, 0, 15.6)], 0.05, seg=4))
-    c.add(c.sw('dark'), box(0.4, 0.4, 0.4, center=(0, 0, 0)), xf=M(P3(117.9, 0, 15.4)))
-    b.pop()
-
-
-def motor_boat(m, Bc, side, length=9.6, beam_w=2.9):
-    c = m.ctx
-    xc = side * 8.25
-    yk = dk(Bc, 8.0) + 0.85
-    secs_g, secs_w = [], []
-    nsec = 9
-    for i in range(nsec):
-        t = i / (nsec - 1)
-        z = zB(Bc) - length / 2 + t * length
-        half = beam_w / 2 * (1 - max(0.0, (t - 0.55) / 0.45) ** 1.8 * 0.97) * (0.93 + 0.07 * math.sin(t * math.pi))
-        dead = 0.35 + 0.55 * t
-        sheer = 1.5 + 0.25 * t ** 2
-        kl = 0.25 * max(0.0, (t - 0.8) / 0.2) ** 2
-        prof = [(0.0, kl), (half * 0.5, kl + dead * 0.5), (half * 0.95, kl + dead), (half, kl + dead + 0.3)]
-        secs_g.append([(xc + p[0], yk + p[1], z) for p in prof[::-1]] + [(xc - p[0], yk + p[1], z) for p in prof[1:]])
-        secs_w.append([(xc + half, yk + kl + dead + 0.3, z), (xc + half * 1.02, yk + sheer, z),
-                       (xc - half * 1.02, yk + sheer, z), (xc - half, yk + kl + dead + 0.3, z)])
-    P, N, UV, I = loft(secs_g, closed=False)
-    P, N, I = orient_outward(P, N, I, lambda p: np.array([xc, yk + 1.2, p[2]]))
-    c.add(c.sw('dark'), (P, N, UV, I))
-    for k in (0, 2):
-        P, N, UV, I = loft([[r[k], r[k + 1]] for r in secs_w], closed=False)
-        P, N, I = orient_outward(P, N, I, lambda p: np.array([xc, yk + 1.0, p[2]]))
-        c.add(c.sw('white'), (P, N, UV, I))
-    P, N, UV, I = loft([[r[1], r[2]] for r in secs_w], closed=False)
-    P, N, I = orient_outward(P, N, I, lambda p: np.array([xc, yk - 3.0, p[2]]))
-    c.add(c.sw('white'), (P, N, UV, I))
-    r0 = secs_w[0]
-    c.add(c.sw('white'), _quad(r0[3], r0[0], r0[1], r0[2]))
-    ccab = [(Bc - 1.6, side * 8.25 + 1.05), (Bc + 1.8, side * 8.25 + 1.05), (Bc + 1.8, side * 8.25 - 1.05),
-            (Bc - 1.6, side * 8.25 - 1.05)]
-    house(c, ccab, yk + 1.5, yk + 2.75, top='white', walls='mid')
-    for s2 in (1, -1):
-        strip(c, 'WINDOW', 3.0, P3(Bc + 1.6, xc + s2 * 1.07, yk + 1.95), P3(Bc - 1.4, xc + s2 * 1.07, yk + 1.95), 0.55,
-              (s2, 0, 0), offset=0.03)
-    for dz in (-2.6, 2.6):
-        yd = dk(Bc, 8.0)
-        c.add(c.paint, box(2.0, yk + 0.6 - yd, 0.35, center=(0, 0, 0)), xf=M(np.array([xc, (yk + 0.6 + yd) / 2, zB(Bc) + dz])))
+    D.crane(c, P3(122.9, 0, 9.45))
 
 
 def boats(m):
+    c = m.ctx
     m.b.node('Boats', parent=None)
+    Bc = 114.8
     for s in (1, -1):
-        motor_boat(m, 114.8, s)
+        xc = s * 8.25
+        ydeck = dk(Bc, 8.0)
+        o = np.array([xc, ydeck + 0.95, zB(Bc)])
+        fr, fl = D.launch_boat(c, o, s)
+        railing_pts(c, fr)
+        railing_pts(c, fl)
+        for dz in (-2.6, 2.4):
+            c.add(c.paint, box(2.3, 1.05, 0.4, center=(0, 0, 0)), xf=M(np.array([xc, ydeck + 0.48, zB(Bc) + dz])))
     m.b.node('Superstructure')
     for s in (1, -1):
-        raft_rack(m.ctx, P3(118.8, s * 9.5, dk(118.8, 9.5) - 0.05), n=8, along=(0, 0, -1))
-        raft_rack(m.ctx, P3(145.0, s * 9.5, dk(145.0, 9.5) - 0.05), n=6, along=(0, 0, -1))
+        ydeck = dk(Bc, 8.0)
+        for Bd in (110.4, 119.3):
+            D.slewing_davit(c, P3(Bd, s * 6.4, dk(Bd, 6.4) - 0.05), P3(Bd, s * 8.25, ydeck + 4.7), s)
+        raft_rack(c, P3(121.0, s * 9.5, dk(121.0, 9.5) - 0.05), n=6, along=(0, 0, -1))
+        raft_rack(c, P3(145.0, s * 9.5, dk(145.0, 9.5) - 0.05), n=6, along=(0, 0, -1))
 
 
 # =============================================================================================
@@ -1096,22 +903,11 @@ def vls(m):
             o = P3(Bc, cx, ytop)
             # flush hatch ring (red-brown with lid outlines)
             c.add(c.rect('vls_top'), cylinder(1.9, 0.03, seg=20, caps=(False, True), cap_uv_rect=(0, 0, 1, 1)), xf=M(o))
-            # grey lid-drive unit: round cover plate outboard-forward + mechanism boxes inboard-aft
-            c.add(c.sw('light'), cylinder(1.0, 0.16, seg=16), xf=M(P3(Bc - 0.75, cx + s * 0.55, ytop)))
-            c.add(c.sw('light'), box(1.3, 1.15, 1.7, center=(0, 0, 0)), xf=M(P3(Bc + 0.75, cx - s * 0.35, ytop + 0.575)))
-            c.add(c.sw('light'), box(0.9, 1.35, 1.0, center=(0, 0, 0)), xf=M(P3(Bc + 0.55, cx - s * 0.35 + s * 1.05, ytop + 0.675)))
-            c.add(c.sw('light'), beam(P3(Bc - 0.2, cx + s * 0.2, ytop + 0.25), P3(Bc + 0.1, cx - s * 0.6, ytop + 0.25), 0.16, 0.16))
-    # loading gantry on A-frame legs along the centreline
+            G.s300_drive(c, Bc, cx, s, ytop)
+    # loading gantry on plate legs along the centreline, running on a deck rail
     yd = dk(134.0)
-    c.add(c.sw('light'), box(0.45, 0.3, 14.0, center=(0, 0, 0)), xf=M(P3(134.5, 0, yd + 0.15)))
-    yb = yd + 3.0
-    c.add(c.sw('light'), box(1.0, 0.85, 9.6, center=(0, 0, 0)), xf=M(P3(133.0, 0, yb)))
-    for Bl in (129.4, 136.6):
-        for sx in (1, -1):
-            c.add(c.sw('light'), beam(P3(Bl, sx * 1.15, yd + 0.3), P3(Bl, sx * 0.4, yb - 0.4), 0.3, 0.3, up=(0, 0, 1)))
-        c.add(c.sw('light'), beam(P3(Bl, -0.9, yd + 1.2), P3(Bl, 0.9, yd + 1.2), 0.15, 0.15))
-    c.add(c.sw('light'), box(4.6, 0.6, 0.8, center=(0, 0, 0)), xf=M(P3(137.4, 0, yb + 0.1)))
-    c.add(c.sw('light'), box(1.4, 1.0, 1.6, center=(0, 0, 0)), xf=M(P3(129.0, 0, yb + 0.85)))
+    c.add(c.sw("light"), D.rbox(0.45, 0.22, 14.0, r=0.06, seg=1), xf=M(P3(134.5, 0, yd)))
+    G.s300_gantry(c, 128.2, 137.8, yd, yd + 3.0, legs=(129.4, 136.6))
     for Bv in (131.3, 139.3):
         for s in (1, -1):
             mushroom_vent(c, P3(Bv, s * 6.0, dk(Bv, 6.0) - 0.05), r=0.55)
@@ -1127,9 +923,9 @@ def aft_superstructure(m):
     b.node('Superstructure')
     y0 = dmin(143.8, 157.5, 7.0) - 0.3
     a1 = sym_poly([(143.8, 6.4), (144.6, 7.25), (153.6, 7.25), (154.6, 6.3), (154.6, 3.0)])
-    house(c, a1, y0, 9.7, lip=0.12)
+    house(c, a1, y0, 9.7, lip=0.12, bevel=0.25, bevel_where=lambda B, x: B < 154)
     rail_poly(c, a1, 9.7)
-    side_strip(c, 'PORTS', 145.0, 153.5, 7.27, 8.0, 1.0)
+    side_strip(c, 'PORTS', 145.1, 153.2, 7.27, 8.0, 1.0)
     end_strip(c, 'PORTS', 143.8, -5.8, 5.8, 8.0, 1.0, facing=1)
     for s in (1, -1):
         door(c, 149.5, s * 7.27, 6.8, (s, 0, 0))
@@ -1137,42 +933,25 @@ def aft_superstructure(m):
     # Pop Group corner houses (B 154.6-157.4, x 4.7-7.2)
     for s in (1, -1):
         poly = [(154.5, s * 4.7), (154.5, s * 7.0), (156.9, s * 7.0), (157.4, s * 6.5), (157.4, s * 4.7)]
-        house(c, poly if s > 0 else poly[::-1], y0, 9.7)
+        house(c, poly if s > 0 else poly[::-1], y0, 9.7, bevel=0.15, bevel_where=lambda B, x: abs(x) > 6.0)
     a2 = sym_poly([(144.9, 4.5), (154.6, 4.5)])
-    house(c, a2, 9.6, 12.2, lip=0.12)
+    house(c, a2, 9.6, 12.2, lip=0.12, bevel=0.25)
     rail_poly(c, a2, 12.2)
     side_strip(c, 'PORTS', 146.0, 153.8, 4.52, 10.6, 1.0)
     a3 = sym_poly([(149.4, 2.4), (155.1, 2.4)])
-    house(c, a3, 12.1, 14.8, lip=0.12)
+    house(c, a3, 12.1, 14.8, lip=0.12, bevel=0.2)
     rail_poly(c, a3, 14.8)
     for s in (1, -1):
         door(c, 151.2, s * 2.42, 12.2, (s, 0, 0))
     # Top Dome (3R41 Volna)
-    o = P3(152.5, 0, 14.8)
-    b.push('TopDome', parent='Superstructure', translation=tuple(o))
-    c.add(c.paint, cylinder(1.3, 0.35, seg=16), xf=M(o))
-    dc = P3(152.5, 0, 16.65)
-    c.add(c.rect('dome'), sphere(1.95, seg=20, rings=12, uv_rect=(0, 0, 1, 1)), xf=M(dc))
-    el = math.radians(20)
-    d = np.array([0.0, math.sin(el), math.cos(el)])
-    R = frame_from_dir(d) @ rot_x(math.pi / 2)
-    cone = lathe([(1.75, 0.0), (1.72, 0.1), (1.25, 1.25), (0.0, 1.3)], seg=20)
-    c.add(c.paint, cone, xf=M(dc + d * 1.2, R))
-    b.pop()
+    D.top_dome(c, P3(152.4, 0, 14.8))
     b.node('Superstructure')
     c.add(c.paint, tube_path([P3(154.1, 0, 14.8), P3(154.1, 0, 22.2)], 0.12, seg=6))
     c.add(c.paint, beam(P3(154.1, -1.5, 20.0), P3(154.1, 1.5, 20.0), 0.1, 0.1))
     c.add(c.paint, box(0.9, 0.8, 0.9, center=(0, 0, 0)), xf=M(P3(155.0, 0.0, 15.2)))
     # Pop Group directors (4R33), dishes face aft when stowed
-    for s, nm in ((1, 'PopGroup_P'), (-1, 'PopGroup_S')):
-        o = P3(156.1, s * 5.9, 9.7)
-        b.push(nm, parent='Superstructure', translation=tuple(o))
-        c.add(c.paint, cylinder(0.55, 0.8, seg=10), xf=M(o))
-        c.add(c.paint, box(1.8, 1.4, 1.8, center=(0, 1.5, 0)), xf=M(o))
-        Rb = rot_x(-math.pi / 2)                # +y -> -z (aft)
-        c.add(c.sw('light'), lathe([(0.0, 0.0), (0.45, 0.05), (0.8, 0.24)], seg=14), xf=M(o + np.array([0, 1.7, -0.95]), Rb))
-        c.add(c.sw('light'), lathe([(0.0, 0.0), (0.3, 0.1)], seg=10), xf=M(o + np.array([s * 0.62, 2.35, -0.92]), Rb))
-        b.pop()
+    for s_, nm in ((1, 'PopGroup_P'), (-1, 'PopGroup_S')):
+        D.pop_group(c, P3(156.1, s_ * 5.9, 9.7), s_, nm)
     b.node('Superstructure')
     # hangar with a steep sloped aft door
     poly = [(zB(154.6), 6.3), (zB(165.6), 6.3), (zB(165.6), 6.95), (zB(164.0), 11.3), (zB(154.6), 11.3)]
@@ -1213,10 +992,23 @@ def stern(m):
         door(c, 167.6, s * 3.12, QD_Y, (s, 0, 0))
         door(c, 171.0, s * 3.97, QD_Y, (s, 0, 0))
     # helicopter control cab (starboard)
-    cab = [(166.6, -0.9), (169.7, -0.9), (169.7, -3.1), (166.6, -3.1)]
-    house(c, cab, 6.9, 8.25)
-    strip(c, 'WINDOW', 6.0, P3(169.72, -1.0, 7.4), P3(169.72, -3.0, 7.4), 0.6, (0, 0, -1), offset=0.03)
-    strip(c, 'WINDOW', 6.0, P3(166.8, -3.12, 7.4), P3(169.5, -3.12, 7.4), 0.6, (-1, 0, 0), offset=0.03)
+    # low wall, outward-leaning glazing with mullions, overhanging roof
+    def rect_Bx(B0, B1, x0, x1, d=0.0):
+        return [(B0 - d, x0 + d), (B1 + d, x0 + d), (B1 + d, x1 - d), (B0 - d, x1 - d)]
+    cab = rect_Bx(166.6, 169.7, -0.9, -3.1)
+    house(c, cab, 6.9, 7.2, top=None, bevel=0.15)
+    house(c, cab, 7.2, 7.95, top_poly_Bx=rect_Bx(166.6, 169.7, -0.9, -3.1, 0.15), walls='glass', top=None, bevel=0.15)
+    house(c, rect_Bx(166.6, 169.7, -0.9, -3.1, 0.3), 7.95, 8.12, top='paint', bottom=True, bevel=0.2)
+    lo, hi = rect_Bx(166.6, 169.7, -0.9, -3.1), rect_Bx(166.6, 169.7, -0.9, -3.1, 0.15)
+    for k in range(4):
+        a0, a1 = np.array(lo[k]), np.array(lo[(k + 1) % 4])
+        b0, b1 = np.array(hi[k]), np.array(hi[(k + 1) % 4])
+        n = max(2, int(round(np.linalg.norm(a1 - a0) / 0.75)))
+        for t in np.linspace(0.08, 0.92, n):
+            pa, pb = a0 + (a1 - a0) * t, b0 + (b1 - b0) * t
+            c.add(c.sw('dark'), beam(P3(pa[0], pa[1], 7.2), P3(pb[0], pb[1], 7.95), 0.06, 0.06))
+    whip(c, P3(167.2, -2.6, 8.12), 3.0, r=0.04)
+    G.lamp(c, P3(169.2, -1.4, 8.12), 'white')
     # helideck: octagon B 173.2-185.2, +-5.3, on a support box and pillars
     Bf, Ba, hw, ch = 173.2, 185.2, 5.3, 1.8
     octo = [(Bf, hw - ch), (Bf + ch, hw), (Ba - ch, hw), (Ba, hw - ch), (Ba, -hw + ch), (Ba - ch, -hw), (Bf + ch, -hw),
@@ -1245,8 +1037,7 @@ def stern(m):
         for s in (1, -1):
             bollard(c, P3(B, s * (hb - 0.8), QD_Y - 0.03))
     for s in (1, -1):
-        c.add(c.sw('dark'), cylinder(0.6, 0.85, seg=12), xf=M(P3(179.5, s * 6.2, QD_Y - 0.03)))
-        c.add(c.sw('dark'), cylinder(0.4, 0.25, seg=10), xf=M(P3(179.5, s * 6.2, QD_Y + 0.8)))
+        G.capstan(c, P3(179.5, s * 6.2, QD_Y - 0.03))
 
 
 def deck_railings(m):
@@ -1304,20 +1095,19 @@ def fittings(m):
             decoy_launcher(c, P3(B, s * 7.6, 9.5), facing=s * math.radians(90), tubes=2)
         decoy_launcher(c, P3(144.4, s * 6.2, 9.7), facing=s * math.radians(90), tubes=2)
     # mushroom vents and lockers on the forecastle and main deck walkways
-    for (B, x) in ((27.0, 6.2), (36.5, 7.6), (60.5, 4.6), (84.5, 6.0), (106.0, 7.8), (126.5, 6.6), (143.8, 8.2),
-                   (158.5, 7.4)):
+    for (B, x) in ((27.0, 6.2), (36.5, 7.6), (106.0, 7.8), (126.5, 6.6), (143.8, 8.2), (158.5, 7.4)):
         for s in (1, -1):
-            vent(c, P3(B, s * x, dk(B, x) - 0.05), r=0.34, h=0.75)
-    for (B, x, w) in ((57.5, 5.1, 1.4), (83.6, 5.4, 1.6), (119.2, 4.6, 1.2), (142.4, 6.8, 1.5)):
+            G.round_vent(c, P3(B, s * x, dk(B, x) - 0.05), r=0.36, h=0.7)
+    for (B, x, w) in ((119.2, 4.6, 1.2), (142.4, 6.8, 1.5)):
         for s in (1, -1):
-            locker(c, B, s * x, dk(B, x) - 0.05, w=w, h=1.1, d=0.7)
+            G.ready_locker(c, P3(B, s * x, dk(B, x) - 0.05), w=w, h=1.1, d=0.7, yaw=0.0 if s > 0 else math.pi)
     # horns / signal lamps on the foremast yard
     for s in (1, -1):
         c.add(c.sw('mid'), cylinder(0.12, 0.5, seg=6), xf=M(P3(81.6, s * 6.4, 29.3)))
         c.add(c.sw('white'), sphere(0.18, seg=8, rings=4), xf=M(P3(81.6, s * 6.4, 29.9)))
     # navigation lights on the tower top platform
     for s in (1, -1):
-        c.add(c.sw('flagred' if s > 0 else 'green'), box(0.3, 0.3, 0.3, center=(0, 0, 0)), xf=M(P3(77.2, s * 1.85, 31.65)))
+        G.lamp(c, P3(77.2, s * 1.85, 31.45), 'flagred' if s > 0 else 'green')
     # stern: towing/mooring capstans on the quarterdeck and liferafts on the hangar sides
     for s in (1, -1):
         raft_rack(c, P3(156.0, s * 3.2, 11.3), n=3, along=(0, 0, -1), spacing=0.8)

@@ -35,11 +35,12 @@ class Ctx:
     def band(self, name, repeat_m):
         return UVSpace(ATLAS, 'band', rect=st.band_uv(name), scale=(1.0 / repeat_m, 1.0), occ=False, subdiv=False)
 
-    def add(self, uvs, geo, xf=None, node=None):
+    def add(self, uvs, geo, xf=None, node=None, occ=None):
+        """occ=False keeps thin members (lattice posts, antenna tubes) out of the AO occluder set."""
         P, N, UV, I = geo
         if len(I) == 0:
             return
-        self.b.add(uvs, P, N, UV, I, xf=xf, node=node)
+        self.b.add(uvs, P, N, UV, I, xf=xf, node=node, occ=occ)
 
 
 
@@ -141,9 +142,40 @@ def offset_poly_xz(poly, d):
     return [tuple(p) for p in out]
 
 
-def house(ctx, poly_Bx, y0, y1, top='deck', walls='paint', top_poly_Bx=None, bottom=False, node=None, lip=0.0):
+def bevel_poly(poly, d, mask=None):
+    """chamfer the corners of a plan polygon [(B, x), ...] by d metres along both edges.
+    Returns (new_poly, mask); pass the mask back in to treat a matching polygon identically."""
+    pts = [np.asarray(p, float) for p in poly]
+    n = len(pts)
+    out, used = [], []
+    for i in range(n):
+        a, b_, c_ = pts[i - 1], pts[i], pts[(i + 1) % n]
+        e1, e2 = b_ - a, c_ - b_
+        l1, l2 = np.linalg.norm(e1), np.linalg.norm(e2)
+        do = (np.dot(e1, e2) / max(l1 * l2, 1e-9) < 0.985) if mask is None else mask[i]
+        used.append(do)
+        if not do or l1 < 1e-6 or l2 < 1e-6:
+            out.append(tuple(b_))
+            continue
+        dd = min(d, 0.4 * l1, 0.4 * l2)
+        out.append(tuple(b_ - e1 / l1 * dd))
+        out.append(tuple(b_ + e2 / l2 * dd))
+    return out, used
+
+
+def house(ctx, poly_Bx, y0, y1, top='deck', walls='paint', top_poly_Bx=None, bottom=False, node=None, lip=0.0,
+          bevel=0.0, bevel_where=None):
     """Vertical-walled (or tapered, with top_poly) deckhouse from a plan polygon in (B, x).
-    lip > 0 adds a deck-edge plate overhanging the walls by `lip` metres (0.16 m thick)."""
+    lip > 0 adds a deck-edge plate overhanging the walls by `lip` metres (0.16 m thick);
+    bevel > 0 chamfers the vertical corners (only those where bevel_where(B, x) is true, if given)."""
+    if bevel > 0:
+        mask = None
+        if bevel_where is not None:
+            auto = bevel_poly(poly_Bx, bevel)[1]
+            mask = [a and bool(bevel_where(B, x)) for a, (B, x) in zip(auto, poly_Bx)]
+        poly_Bx, mask = bevel_poly(poly_Bx, bevel, mask)
+        if top_poly_Bx is not None:
+            top_poly_Bx = bevel_poly(top_poly_Bx, bevel, mask)[0]
     poly = poly_Bx_to_xz(poly_Bx)
     tpoly = poly_Bx_to_xz(top_poly_Bx) if top_poly_Bx is not None else None
     wall_uv = ctx.paint if walls == 'paint' else ctx.sw(walls)
@@ -298,7 +330,7 @@ def truss(ctx, a, b, w, h, up=(0, 1, 0), rep=6.0, node=None):
         j = (i + 1) % 4
         lattice_quad(ctx, [pa[i], pb[i], pb[j], pa[j]], rep=rep, node=node)
     for i in range(4):
-        ctx.add(ctx.paint, beam(pa[i], pb[i], 0.07, 0.07), node=node)
+        ctx.add(ctx.paint, beam(pa[i], pb[i], 0.07, 0.07), node=node, occ=False)
 
 
 def lattice_tower(ctx, base, top_hw, bot_hw, height, rep=4.0, node=None):
@@ -311,45 +343,14 @@ def lattice_tower(ctx, base, top_hw, bot_hw, height, rep=4.0, node=None):
     for i in range(4):
         j = (i + 1) % 4
         lattice_quad(ctx, [pb[i], pb[j], pt[j], pt[i]], rep=rep, node=node)
-        ctx.add(ctx.paint, beam(pb[i], pt[i], 0.08, 0.08), node=node)
+        ctx.add(ctx.paint, beam(pb[i], pt[i], 0.08, 0.08), node=node, occ=False)
 
 
-def sphere_at(ctx, sw, c, r, seg=12, rings=8, node=None):
+def sphere_at(ctx, sw, c, r, seg=12, rings=6, node=None):
     ctx.add(ctx.sw(sw), sphere(r, seg=seg, rings=rings), xf=M(np.asarray(c, float)), node=node)
 
 
 # ------------------------------------------------------------------------------------------ equipment
-def ak630(ctx, pos, facing=0.0, name='AK630', parent=None):
-    """AK-630M 30 mm CIWS (origin at its deck)."""
-    b = ctx.b
-    o = np.asarray(pos, float)
-    b.push(name, parent=parent, translation=tuple(o))
-    R = rot_y(facing)
-    sw = ctx.paint
-    ctx.add(sw, lathe([(1.25, 0.0), (1.2, 0.12), (1.02, 0.55)], seg=16), xf=M(o, R))        # ribbed skirt
-    ctx.add(sw, lathe([(1.02, 0.55), (1.02, 1.15), (0.95, 1.4), (0.72, 1.66), (0.35, 1.78), (0.0, 1.8)],
-                      seg=16), xf=M(o, R))
-    ctx.add(ctx.sw('mid'), box(0.62, 0.55, 0.45, center=(0, 1.0, 0.9)), xf=M(o, R))
-    ctx.add(ctx.sw('dark'), cylinder(0.15, 2.1, seg=8, r_top=0.14),
-            xf=M(o + R @ np.array([0, 1.0, 1.05]), R @ rot_x(math.pi / 2)))
-    ctx.add(ctx.sw('dark'), cylinder(0.19, 0.3, seg=8), xf=M(o + R @ np.array([0, 1.0, 2.95]), R @ rot_x(math.pi / 2)))
-    ctx.add(ctx.sw('mid'), box(0.3, 0.3, 0.5, center=(0.0, 1.85, -0.2)), xf=M(o, R))          # sight
-    b.pop()
-
-
-def bass_tilt(ctx, pos, facing=0.0, name='BassTilt', parent=None, pedestal=1.4):
-    """MR-123 Vympel fire-control director on a pedestal."""
-    b = ctx.b
-    o = np.asarray(pos, float)
-    b.push(name, parent=parent, translation=tuple(o))
-    R = rot_y(facing)
-    ctx.add(ctx.paint, cylinder(0.6, pedestal, seg=10, r_top=0.45), xf=M(o, R))
-    ctx.add(ctx.paint, cylinder(0.95, 0.22, seg=14), xf=M(o + np.array([0, pedestal, 0]), R))
-    ctx.add(ctx.paint, box(1.5, 1.2, 1.6, center=(0, pedestal + 0.82, -0.25)), xf=M(o, R))
-    drum = lathe([(0.0, -0.1), (0.85, -0.1), (0.88, 0.45), (0.7, 0.85), (0.38, 1.05), (0.0, 1.1)], seg=16)
-    ctx.add(ctx.sw('radome'), drum, xf=M(o + R @ np.array([0, pedestal + 1.0, 0.45]), R @ rot_x(math.pi / 2)))
-    ctx.add(ctx.sw('mid'), box(0.35, 0.4, 0.6, center=(0.95, pedestal + 0.9, 0.1)), xf=M(o, R))
-    b.pop()
 
 
 def rbu6000(ctx, pos, facing=0.0, name='RBU6000', parent=None):
