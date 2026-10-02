@@ -184,6 +184,19 @@ def paint_vent(L, rect):
         L.rect(x0 + w * 0.15, yy, x0 + w * 0.85, yy + 2, col=PAL['mid'])
 
 
+def paint_raft(L, rect):
+    """liferaft canister, v along the canister (lathe profile length): white shell, two dark straps and the
+    flange seam between the two halves."""
+    x0, y0, x1, y1 = rect
+    h = y1 - y0
+    pr = np.array(RAFT_PROF)
+    Lp = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(pr, axis=0), axis=1))])
+    L.rect(x0, y0, x1, y1, col=PAL['white'], alpha=1.0, rough=0.45)
+    for v in (np.interp(-0.27, pr[2:4, 1], Lp[2:4]) / Lp[-1], np.interp(0.27, pr[2:4, 1], Lp[2:4]) / Lp[-1]):
+        L.rect(x0, y0 + h * (v - 0.014), x1, y0 + h * (v + 0.014), col=PAL['dark'] * 1.2, add_height=0.6)
+    L.rect(x0, y0 + h * 0.495, x1, y0 + h * 0.505, col=PAL['white'] * 0.8, add_height=0.8)
+
+
 def paint_funnel_top(L, rect):
     """top of one exhaust stack: 4 elongated uptakes + 2 round ones (sheet 6)."""
     x0, y0, x1, y1 = rect
@@ -397,6 +410,7 @@ def register_decals(m):
     m.alloc('louvre', 64, 96, paint_louvre_panel)
     m.alloc('vlouvre', 256, 128, paint_vert_louvre)
     m.alloc('dome', 128, 128, paint_top_dome)
+    m.alloc('raft', 8, 128, paint_raft)
     A.register(m)
     WP.register(m)
 

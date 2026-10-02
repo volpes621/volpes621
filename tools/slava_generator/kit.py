@@ -29,7 +29,7 @@ class Ctx:
         return self._sw[name]
 
     def rect(self, name, clamp=True):
-        solid = name in ('helideck', 'dome', 'vls_top')
+        solid = name in ('helideck', 'dome', 'vls_top', 'raft')
         return UVSpace(ATLAS, 'rect', rect=self.layout.uv(name), clamp=clamp, occ=solid, subdiv=solid)
 
     def band(self, name, repeat_m):
@@ -353,15 +353,20 @@ def sphere_at(ctx, sw, c, r, seg=12, rings=6, node=None):
 # ------------------------------------------------------------------------------------------ equipment
 
 
+# liferaft canister profile (r, y): domed ends whose profile turns stay under the lathe's 40 deg crease
+# limit, so the shading runs smoothly round the ends without extra segments
+RAFT_PROF = [(0.0, -0.68), (0.19, -0.611), (0.3, -0.454), (0.3, 0.454), (0.19, 0.611), (0.0, 0.68)]
+
+
 def raft_rack(ctx, base, n=4, along=(0, 0, -1), node=None, stack=1, spacing=0.8):
     base = np.asarray(base, float)
     d = normalize(np.asarray(along, float))
     for s in range(stack):
         for k in range(n):
             c = base + d * (k * spacing) + np.array([0, 0.33 + s * 0.62, 0])
-            cap = lathe([(0.0, -0.66), (0.24, -0.64), (0.3, -0.52), (0.3, 0.52), (0.24, 0.64), (0.0, 0.66)], seg=8)
+            cap = lathe(RAFT_PROF, seg=10, uv_rect=(0.0, 0.0, 1.0, 1.0))
             Rr = frame_from_dir(np.cross(d, [0, 1, 0])) @ rot_x(math.pi / 2)
-            ctx.add(ctx.sw('white'), cap, xf=M(c, Rr), node=node)
+            ctx.add(ctx.rect('raft'), cap, xf=M(c, Rr), node=node)
 
 
 def bollard(ctx, pos, along=(0, 0, 1), node=None):

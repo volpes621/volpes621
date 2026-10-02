@@ -50,8 +50,8 @@ def splash_shield(ctx, Bc, R, a0, a1, ybot, ytop, n=30, stiff_every=3):
 def round_vent(ctx, pos, r=0.32, h=0.55):
     """mushroom deck ventilator: red-brown coaming under a grey domed cap."""
     o = np.asarray(pos, float)
-    ctx.add(ctx.sw('deck_red'), cylinder(r * 0.72, h * 0.55, seg=8, caps=(False, False)), xf=M(o))
-    ctx.add(ctx.paint, lathe([(r * 0.96, h * 0.5), (r, h * 0.66), (r * 0.7, h * 0.95), (0.0, h)], seg=8), xf=M(o))
+    ctx.add(ctx.sw('deck_red'), cylinder(r * 0.72, h * 0.55, seg=12, caps=(False, False)), xf=M(o))
+    ctx.add(ctx.paint, lathe([(r * 0.96, h * 0.5), (r, h * 0.66), (r * 0.7, h * 0.95), (0.0, h)], seg=12), xf=M(o))
 
 
 def ready_locker(ctx, pos, w=1.2, h=1.0, d=0.6, yaw=0.0):

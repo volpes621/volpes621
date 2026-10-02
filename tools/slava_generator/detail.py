@@ -373,8 +373,9 @@ def launcher_support(ctx, Bf, side, tube_y, deck_y, x_in=4.95, x_out=9.65, tubes
 # =============================================================================================
 # helpers for beams with taper and tubes
 # =============================================================================================
-def taper_beam(p0, p1, w0, h0, w1, h1, up=(0, 1, 0)):
-    """closed tapered box beam from p0 to p1 (rectangular sections w x h)."""
+def taper_beam(p0, p1, w0, h0, w1, h1, up=(0, 1, 0), cham=0.0):
+    """closed tapered box beam from p0 to p1 (rectangular sections w x h); cham > 0 chamfers the four long
+    edges by that fraction of the smaller side of each section."""
     p0 = np.asarray(p0, float); p1 = np.asarray(p1, float)
     d = normalize(p1 - p0)
     upv = normalize(np.asarray(up, float))
@@ -382,11 +383,15 @@ def taper_beam(p0, p1, w0, h0, w1, h1, up=(0, 1, 0)):
         upv = np.array([1.0, 0, 0])
     side = normalize(np.cross(d, upv)); upv = np.cross(side, d)
     def ring(p, w, h):
-        return [p + side * sx * w / 2 + upv * sy * h / 2 for (sx, sy) in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+        if cham <= 0:
+            return [p + side * sx * w / 2 + upv * sy * h / 2 for (sx, sy) in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+        c, hw, hh = cham * min(w, h), w / 2, h / 2
+        return [p + side * sx + upv * sy for (sx, sy) in ((c - hw, -hh), (hw - c, -hh), (hw, c - hh), (hw, hh - c),
+                                                          (hw - c, hh), (c - hw, hh), (-hw, hh - c), (-hw, c - hh))]
     a = ring(p0, w0, h0); b = ring(p1, w1, h1)
     polys = [a[::-1], b]
-    for i in range(4):
-        j = (i + 1) % 4
+    for i in range(len(a)):
+        j = (i + 1) % len(a)
         polys.append([a[i], a[j], b[j], b[i]])
     P, N, UV, I = flat_poly_faces(polys)
     cen = (p0 + p1) / 2
@@ -552,26 +557,51 @@ def slewing_davit(ctx, base, tip, side):
 # missile/boat crane on the crane house (S-300F reloads and boats)
 # =============================================================================================
 def crane(ctx, o, name='Crane', parent='Superstructure'):
-    """o = base on the crane-house roof; the jib stows pointing forward (+z)."""
+    """boat/reload crane after the Varyag (2012) close-up: slewing base and machinery house with two winch
+    drums, a tubular A-frame post, and a chamfered box jib hinged low at the front of the house, luffed by a
+    hydraulic ram and hung from the A-frame head by topping-lift wires. o = base on the crane-house roof; the
+    jib stows pointing forward (+z)."""
     b = ctx.b
     o = np.asarray(o, float)
     b.push(name, parent=parent, translation=tuple(o))
-    pt = ctx.paint
+    pt, dk = ctx.paint, ctx.sw('dark')
     ctx.add(pt, cylinder(1.15, 0.55, seg=20), xf=M(o))
-    ctx.add(ctx.sw('dark'), cylinder(1.22, 0.12, seg=20, y0=0.55), xf=M(o))
-    ctx.add(pt, rbox(2.2, 1.55, 2.9, r=0.18, seg=2, bevel=0.1, y0=0.67), xf=M(o + np.array([0, 0, -0.35])))
-    ctx.add(ctx.sw('glass'), box(0.03, 0.55, 1.1, center=(0, 0, 0)), xf=M(o + np.array([1.11, 1.55, 0.35])))
-    ctx.add(ctx.sw('glass'), box(0.9, 0.55, 0.03, center=(0, 0, 0)), xf=M(o + np.array([0.55, 1.55, 1.11])))
-    # tapered king post and luffing jib
-    p0 = o + np.array([0, 2.2, -1.1]); p1 = o + np.array([0, 7.1, -1.4])
-    ctx.add(pt, taper_beam(p0, p1, 0.8, 0.9, 0.6, 0.62, up=(0, 0, 1)))
-    j0 = o + np.array([0, 7.0, -1.75]); j1 = o + np.array([0, 7.45, 5.1])
-    ctx.add(pt, taper_beam(j0, j1, 0.62, 0.72, 0.34, 0.4, up=(0, 1, 0)))
-    hydraulic_ram(ctx, o + np.array([0, 2.6, 0.6]), o + np.array([0, 6.85, 2.2]), r=0.16)
+    ctx.add(dk, cylinder(1.22, 0.12, seg=20, y0=0.55), xf=M(o))
+    yh = 1.92                                                 # machinery-house roof
+    ctx.add(pt, rbox(2.2, yh - 0.67, 2.9, r=0.18, seg=2, bevel=0.1, y0=0.67), xf=M(o + np.array([0, 0, -0.35])))
+    ctx.add(ctx.sw('glass'), box(0.03, 0.45, 1.1, center=(0, 0, 0)), xf=M(o + np.array([1.11, 1.42, 0.35])))
+    ctx.add(ctx.sw('glass'), box(0.9, 0.45, 0.03, center=(0, 0, 0)), xf=M(o + np.array([0.55, 1.42, 1.11])))
+    # two flanged winch drums on the roof aft, their motors outboard
+    for sx in (-1, 1):
+        wc = o + np.array([sx * 0.42, yh + 0.31, -1.1])
+        ctx.add(dk, lathe([(0.0, -0.28), (0.31, -0.28), (0.31, -0.23), (0.21, -0.21), (0.21, 0.21), (0.31, 0.23),
+                           (0.31, 0.28), (0.0, 0.28)], seg=8), xf=M(wc, rot_z(math.pi / 2)))
+        ctx.add(pt, box(0.3, 0.42, 0.5, center=(0, 0.21, 0)), xf=M(o + np.array([sx * 0.88, yh, -1.1])))
+    # tubular A-frame: four legs from the roof corners to a cross-head, braced at mid height
+    hd = [o + np.array([sx * 0.3, yh + 4.6, -0.5]) for sx in (-1, 1)]
+    feet = {(sx, fz): o + np.array([sx * 0.85, yh, fz]) for sx in (-1, 1) for fz in (0.6, -1.7)}
+    for (sx, fz), f in feet.items():
+        ctx.add(pt, tube_path([f, hd[(sx + 1) // 2]], 0.085, seg=6), occ=False)
+    mid = {k: f + (hd[(k[0] + 1) // 2] - f) * 0.45 for k, f in feet.items()}
+    for (k0, k1) in (((-1, 0.6), (-1, -1.7)), ((1, 0.6), (1, -1.7)), ((-1, 0.6), (1, 0.6)), ((-1, -1.7), (1, -1.7))):
+        ctx.add(pt, tube_path([mid[k0], mid[k1]], 0.06, seg=6), occ=False)
+    ctx.add(pt, tube_path([hd[0] + np.array([-0.1, 0, 0]), hd[1] + np.array([0.1, 0, 0])], 0.11, seg=6))
+    ctx.add(pt, rbox(0.5, 0.36, 0.42, r=0.06, seg=1, y0=-0.1), xf=M((hd[0] + hd[1]) / 2))   # sheave block
+    # jib: heel lugs at the front of the roof, chamfered box tapering to the head sheave
+    heel = o + np.array([0, yh + 0.3, 0.75])
+    head = heel + 6.6 * np.array([0, math.sin(math.radians(53)), math.cos(math.radians(53))])
+    for sx in (-1, 1):
+        ctx.add(pt, box(0.08, 0.5, 0.55, center=(0, 0.2, 0)), xf=M(o + np.array([sx * 0.36, yh, 0.75])))
+    ctx.add(dk, cylinder(0.08, 0.84, seg=8), xf=M(heel + np.array([-0.42, 0, 0]), rot_z(-math.pi / 2)))
+    ctx.add(pt, taper_beam(heel, head, 0.62, 0.7, 0.34, 0.4, up=(0, 1, 0), cham=0.22))
+    hydraulic_ram(ctx, o + np.array([0, 1.1, 1.1]), heel + (head - heel) * 0.36 + np.array([0, -0.3, 0.2]), r=0.14)
+    for sx in (-1, 1):                                         # topping-lift wires
+        ctx.add(dk, tube_path([(hd[0] + hd[1]) / 2 + np.array([sx * 0.12, 0.2, 0]),
+                               head + np.array([sx * 0.12, 0.12, 0])], 0.025, seg=4))
     # sheave, wire and hook block at the jib head
-    ctx.add(ctx.sw('dark'), cylinder(0.32, 0.12, seg=12), xf=M(j1 + np.array([-0.06, 0, 0]), rot_z(math.pi / 2)))
-    ctx.add(ctx.sw('dark'), tube_path([j1 + np.array([0, -0.2, 0]), j1 + np.array([0, -1.6, 0])], 0.03, seg=4))
-    ctx.add(ctx.sw('dark'), rbox(0.36, 0.42, 0.24, r=0.08, seg=1, y0=0.0), xf=M(j1 + np.array([0, -2.0, 0])))
-    hook = [j1 + np.array([0, -2.05 - 0.25 * math.sin(a), 0.2 * math.cos(a)]) for a in np.linspace(0.2, math.pi * 1.4, 7)]
-    ctx.add(ctx.sw('dark'), tube_path(hook, 0.04, seg=4))
+    ctx.add(dk, cylinder(0.3, 0.12, seg=12), xf=M(head + np.array([-0.06, 0, 0]), rot_z(math.pi / 2)))
+    ctx.add(dk, tube_path([head + np.array([0, -0.2, 0]), head + np.array([0, -1.6, 0])], 0.03, seg=4))
+    ctx.add(dk, rbox(0.36, 0.42, 0.24, r=0.08, seg=1, y0=0.0), xf=M(head + np.array([0, -2.0, 0])))
+    hook = [head + np.array([0, -2.05 - 0.25 * math.sin(a), 0.2 * math.cos(a)]) for a in np.linspace(0.2, math.pi * 1.4, 7)]
+    ctx.add(dk, tube_path(hook, 0.04, seg=4))
     b.pop()
