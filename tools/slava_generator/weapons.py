@@ -394,21 +394,30 @@ def _dslab(at, outline, wall=0.1, h=0.15, inset=0.05, crease=40.0):
     return _orient(P, N, np.column_stack([P[:, 0], P[:, 2] + P[:, 1]]), np.array(I))
 
 
-def s3_cover_outline(n_arc=16):
+def s3_cover_tangent():
+    """(angle, lf, ls) of the point where the cover's straight side leaves its round front (upper side)."""
+    vx, vy = S3_COVER_ROOT - S3_RING, S3_COVER_NECK
+    t = math.atan2(vy, vx) - math.acos(S3_COVER_R / math.hypot(vx, vy))
+    return t, S3_RING + S3_COVER_R * math.cos(t), S3_COVER_R * math.sin(t)
+
+
+def s3_cover_outline(n_arc=18):
     """hatch-local outline (counter-clockwise) of the grey loading cover: one plate, round at the front over
-    cell lid 0 and drawn out with straight sides back to the drive boxes."""
-    pts = [(DRV_FRONT, -S3_COVER_R)]
+    cell lid 0 (more than a half circle) and narrowing along straight tangent sides back to the drive boxes."""
+    tt = s3_cover_tangent()[0]
+    pts = [(S3_COVER_ROOT, -S3_COVER_NECK)]
     for k in range(n_arc + 1):
-        t = -math.pi / 2 + math.pi * k / n_arc
+        t = -tt + 2 * tt * k / n_arc
         pts.append((S3_RING + S3_COVER_R * math.cos(t), S3_COVER_R * math.sin(t)))
-    pts.append((DRV_FRONT, S3_COVER_R))
+    pts.append((S3_COVER_ROOT, S3_COVER_NECK))
     return pts
 
 
 # lid-drive unit, hatch-local (lf toward the grey cover, ls across it), metres; after the B-204 museum model
 DRV_FRONT, DRV_DEPTH, DRV_H = 0.5, 1.1, 0.76                  # main boxes: front face, fore-aft depth, height
 DRV_HALF = 0.6                                                # the whole unit lies between the arms (= cover radius)
-S3_COVER_R = 0.6                                              # loading cover: radius of its round front, half width
+S3_COVER_R = 0.6                                              # loading cover: radius of its round front ...
+S3_COVER_ROOT, S3_COVER_NECK = 0.62, 0.42                     # ... root (lf) and half width where it meets the boxes
 DRV_BOXES = ((0.38, 0.44), (-0.12, 0.52))                     # left / right main box: centre ls, width
 DRV_SEAM = 0.15                                               # seam strip between them (ls)
 DRV_U = (-0.3, 0.6, 0.11, 0.94, 0.32)                         # upper box: centre lf, depth, centre ls, width, height
@@ -419,8 +428,8 @@ DRV_LIDS = {'drv_lid_l': (0.48, 1.14), 'drv_lid_r': (0.56, 1.14), 'drv_lid_u': (
 def s300_drive(ctx, Bc, cx, ytop):
     """lid-drive unit over the centre of the eight-cell drum, squared up to the grey loading cover on cell lid 0
     (aft-port; same on every launcher), detailed after the B-204 museum-model close-ups:
-    - base frame, and the grey loading cover as one plate, round over cell lid 0 and drawn out with straight
-      sides back to the boxes, chamfered round its edge, with a bolted hold-down rail across its root;
+    - base frame with a bolted hold-down rail in front of the boxes, and the grey loading cover as one plate,
+      round over cell lid 0 and narrowing along straight sides back to the frame, chamfered round its edge;
     - two main boxes as wide together as the cover, flanged bolted lids with heart-shaped lifting handles,
       the seam between them carried up the front, over the top and across the upper box with clamp blocks;
     - a raised upper box with latches and two handles, a set-back side box with its own clamped seam;
@@ -465,10 +474,10 @@ def s300_drive(ctx, Bc, cx, ytop):
     yb = y0 + 0.08                                            # top of the base frame
     yl = yb + DRV_H + 0.03                                    # top of the main-box lids
     bc = DRV_FRONT - DRV_DEPTH / 2                            # main boxes' centre (lf)
-    # base frame, and the bolted hold-down rail across the root of the cover plate
+    # base frame, with the bolted hold-down rail on its front strip ahead of the boxes
     put(rbox(2 * DRV_HALF + 0.04, 0.08, 1.34, r=0.06, seg=1), bc, 0.0, y0)
-    put(box(2 * DRV_HALF - 0.1, 0.06, 0.08, center=(0, 0.03, 0), faces='XxYZz'), DRV_FRONT + 0.06, 0.0, ytop + 0.15)
-    decal('drv_rail', DRV_FRONT + 0.06, 0.0, ytop + 0.213, 2 * DRV_HALF - 0.1, 0.08)
+    put(box(2 * DRV_HALF, 0.06, 0.08, center=(0, 0.03, 0), faces='XxYZz'), DRV_FRONT + 0.06, 0.0, yb)
+    decal('drv_rail', DRV_FRONT + 0.06, 0.0, yb + 0.063, 2 * DRV_HALF, 0.08)
     # main boxes with flanged lids, bolt rows and handles
     for (ls, w), nm in zip(DRV_BOXES, ('drv_lid_l', 'drv_lid_r')):
         put(rbox(w, DRV_H, DRV_DEPTH, r=0.04, seg=1, bevel=0.03, y0=yb), bc, ls)
@@ -506,7 +515,7 @@ def s300_drive(ctx, Bc, cx, ytop):
            (0.07, 0.05, 0.05), 'XxYyZ')
     # grey loading cover: one plate over cell lid 0 drawn out to the boxes, with two pins
     ctx.add(pt, _dslab(lambda lf, ls, y: at(lf, ls, ytop + y), s3_cover_outline()))
-    cl0, cl1 = DRV_FRONT, S3_RING + S3_COVER_R
+    cl0, cl1 = S3_COVER_ROOT, S3_RING + S3_COVER_R
     decal('vls_lid', (cl0 + cl1) / 2, 0.0, ytop + 0.152, 2 * S3_COVER_R, cl1 - cl0)
     for off in (-1.0, 1.0):
         q = math.pi + off * 1.9                               # around the cover from its rear
@@ -708,7 +717,7 @@ def paint_vls_lid(L, rect):
     base = st.PAL['super'] * 1.05
     L.rect(x0, y0, x1, y1, col=base, alpha=0.0)
     cr, lf_top = S3_COVER_R, S3_RING + S3_COVER_R
-    kx, ky = w / (2 * cr), h / (lf_top - DRV_FRONT)
+    kx, ky = w / (2 * cr), h / (lf_top - S3_COVER_ROOT)
 
     def px(lf, ls):
         return (cr - ls) * kx, (lf_top - lf) * ky
@@ -720,9 +729,11 @@ def paint_vls_lid(L, rect):
     for t in (math.pi / 3, -math.pi / 3):                     # pairs in the two front gaps between the rings
         for dt in (-0.32, 0.32):
             bolts.append((S3_RING + 0.47 * math.cos(t + dt), 0.47 * math.sin(t + dt)))
-    for side in (-1.0, 1.0):                                  # rows along the straight sides
-        for lf in np.arange(DRV_FRONT + 0.16, S3_RING - 0.04, 0.12):
-            bolts.append((lf, side * (cr - 0.125)))
+    _, tlf, tls = s3_cover_tangent()
+    for side in (-1.0, 1.0):                                  # rows along the tapering straight sides
+        for lf in np.arange(S3_COVER_ROOT + 0.1, tlf + 0.01, 0.11):
+            edge = S3_COVER_NECK + (tls - S3_COVER_NECK) * (lf - S3_COVER_ROOT) / (tlf - S3_COVER_ROOT)
+            bolts.append((lf, side * (edge - 0.12)))
 
     def plate(d, s):
         d.polygon([(x * s, y * s) for (x, y) in top], fill=255)
@@ -857,7 +868,7 @@ def register(m):
     m.alloc('ak_door', 48, 96, paint_ak_door)
     m.alloc('ak_hatch', 48, 48, paint_ak_hatch)
     m.alloc('ak_warn', 128, 64, paint_ak_warn)
-    m.alloc('vls_lid', 140, 162, paint_vls_lid)
+    m.alloc('vls_lid', 140, 148, paint_vls_lid)
     m.alloc('perf', 64, 128, paint_perf)
     for nm, (w_m, d_m) in DRV_LIDS.items():                  # ~160 px/m
         m.alloc(nm, int(round(w_m * 160)), int(round(d_m * 160)), lambda L, r, a=w_m, b=d_m: paint_bolt_frame(L, r, a, b))
