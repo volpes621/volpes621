@@ -347,10 +347,12 @@ def s300_hatch(ctx, Bc, cx, ytop):
 
 # lid-drive unit, hatch-local (lf toward the grey cover, ls across it), metres; after the B-204 museum model
 DRV_FRONT, DRV_DEPTH, DRV_H = 0.5, 1.1, 0.76                  # main boxes: front face, fore-aft depth, height
-DRV_BOXES = ((0.32, 0.60), (-0.33, 0.62))                     # left / right main box: centre ls, width
-DRV_U = (-0.3, 0.6, -0.01, 0.88, 0.32)                        # upper box: centre lf, depth, centre ls, width, height
-DRV_S = (-0.07, 0.86, -0.81, 0.30, 0.68)                      # side box: centre lf, depth, centre ls, width, height
-DRV_LIDS = {'drv_lid_l': (0.64, 1.14), 'drv_lid_r': (0.66, 1.14), 'drv_lid_u': (0.92, 0.64), 'drv_lid_s': (0.34, 0.9)}
+DRV_HALF = 0.6                                                # the whole unit lies between the arms (= cover radius)
+DRV_BOXES = ((0.38, 0.44), (-0.12, 0.52))                     # left / right main box: centre ls, width
+DRV_SEAM = 0.15                                               # seam strip between them (ls)
+DRV_U = (-0.3, 0.6, 0.11, 0.94, 0.32)                         # upper box: centre lf, depth, centre ls, width, height
+DRV_S = (-0.01, 0.9, -0.49, 0.22, 0.68)                       # side box: centre lf, depth, centre ls, width, height
+DRV_LIDS = {'drv_lid_l': (0.48, 1.14), 'drv_lid_r': (0.56, 1.14), 'drv_lid_u': (0.98, 0.64), 'drv_lid_s': (0.26, 0.94)}
 
 
 def s300_drive(ctx, Bc, cx, ytop):
@@ -401,10 +403,10 @@ def s300_drive(ctx, Bc, cx, ytop):
     yl = yb + DRV_H + 0.03                                    # top of the main-box lids
     bc = DRV_FRONT - DRV_DEPTH / 2                            # main boxes' centre (lf)
     # base frame, keyhole plate to the cover (top just under the cover's) and bolted hold-down rail
-    put(rbox(1.72, 0.08, 1.34, r=0.06, seg=1), bc, -0.16, y0)
+    put(rbox(2 * DRV_HALF + 0.04, 0.08, 1.34, r=0.06, seg=1), bc, 0.0, y0)
     put(rbox(1.2, 0.1485, S3_RING - DRV_FRONT, r=0.02, seg=1, bevel=0.05), (S3_RING + DRV_FRONT) / 2, 0.0, ytop)
-    put(box(1.3, 0.06, 0.08, center=(0, 0.03, 0), faces='XxYZz'), DRV_FRONT + 0.06, -0.01, ytop + 0.1485)
-    decal('drv_rail', DRV_FRONT + 0.06, -0.01, ytop + 0.2115, 1.3, 0.08)
+    put(box(2 * DRV_HALF, 0.06, 0.08, center=(0, 0.03, 0), faces='XxYZz'), DRV_FRONT + 0.06, 0.0, ytop + 0.1485)
+    decal('drv_rail', DRV_FRONT + 0.06, 0.0, ytop + 0.2115, 2 * DRV_HALF, 0.08)
     # main boxes with flanged lids, bolt rows and handles
     for (ls, w), nm in zip(DRV_BOXES, ('drv_lid_l', 'drv_lid_r')):
         put(rbox(w, DRV_H, DRV_DEPTH, r=0.04, seg=1, bevel=0.03, y0=yb), bc, ls)
@@ -416,18 +418,18 @@ def s300_drive(ctx, Bc, cx, ytop):
     ulf, ud, uls, uw, uh = DRV_U
     uf = ulf + ud / 2                                         # upper box front face (lf)
     yu = yl + uh                                              # top of the upper box body
-    put(box(0.05, DRV_H, 0.04, center=(0, DRV_H / 2, 0), faces='XxYZ'), DRV_FRONT + 0.02, -0.005, yb)
-    clamps(DRV_FRONT + 0.045, -0.005, yb + 0.1, DRV_FRONT + 0.045, -0.005, yb + DRV_H - 0.02, 5,
+    put(box(0.05, DRV_H, 0.04, center=(0, DRV_H / 2, 0), faces='XxYZ'), DRV_FRONT + 0.02, DRV_SEAM, yb)
+    clamps(DRV_FRONT + 0.045, DRV_SEAM, yb + 0.1, DRV_FRONT + 0.045, DRV_SEAM, yb + DRV_H - 0.02, 5,
            (0.085, 0.05, 0.05), 'XxYyZ')
-    put(box(0.05, 0.035, DRV_FRONT - uf, center=(0, 0.0175, 0), faces='XxYZ'), (DRV_FRONT + uf) / 2, -0.005, yl)
-    clamps(uf, -0.005, yl + 0.035, DRV_FRONT, -0.005, yl + 0.035, 5, (0.085, 0.05, 0.065), 'XxYZz')
+    put(box(0.05, 0.035, DRV_FRONT - uf, center=(0, 0.0175, 0), faces='XxYZ'), (DRV_FRONT + uf) / 2, DRV_SEAM, yl)
+    clamps(uf, DRV_SEAM, yl + 0.035, DRV_FRONT, DRV_SEAM, yl + 0.035, 5, (0.085, 0.05, 0.065), 'XxYZz')
     put(rbox(uw, uh, ud, r=0.04, seg=1, bevel=0.03, y0=yl), ulf, uls)
     put(rbox(uw + 0.04, 0.05, ud + 0.04, r=0.05, seg=1, y0=yu - 0.02), ulf, uls)
     decal('drv_lid_u', ulf, uls, yu + 0.033, *DRV_LIDS['drv_lid_u'])
-    put(box(0.05, uh, 0.04, center=(0, uh / 2, 0), faces='XxYZ'), uf + 0.02, -0.005, yl)
-    clamps(uf + 0.045, -0.005, yl + 0.05, uf + 0.045, -0.005, yu, 2, (0.085, 0.05, 0.05), 'XxYyZ')
-    put(box(0.05, 0.035, ud, center=(0, 0.0175, 0), faces='XxYZz'), ulf, -0.005, yu + 0.03)
-    clamps(ulf - ud / 2, -0.005, yu + 0.065, uf, -0.005, yu + 0.065, 3, (0.085, 0.05, 0.065), 'XxYZz')
+    put(box(0.05, uh, 0.04, center=(0, uh / 2, 0), faces='XxYZ'), uf + 0.02, DRV_SEAM, yl)
+    clamps(uf + 0.045, DRV_SEAM, yl + 0.05, uf + 0.045, DRV_SEAM, yu, 2, (0.085, 0.05, 0.05), 'XxYyZ')
+    put(box(0.05, 0.035, ud, center=(0, 0.0175, 0), faces='XxYZz'), ulf, DRV_SEAM, yu + 0.03)
+    clamps(ulf - ud / 2, DRV_SEAM, yu + 0.065, uf, DRV_SEAM, yu + 0.065, 3, (0.085, 0.05, 0.065), 'XxYZz')
     for ls in (-0.3, 0.3):                                    # latches on the upper box front, lid handles
         put(box(0.08, 0.1, 0.05, center=(0, 0, 0), faces='XxYyZ'), uf + 0.025, uls + ls, yu - 0.1)
         handle(ulf, uls + ls, yu + 0.03)
@@ -450,12 +452,12 @@ def s300_drive(ctx, Bc, cx, ytop):
         q = math.pi + off * 1.9                               # around the cover from its rear
         ctx.add(pt, lathe([(0.1, 0.0), (0.1, 0.025), (0.072, 0.03), (0.072, 0.17), (0.055, 0.2), (0.0, 0.21)], seg=8),
                 xf=M(at(S3_RING + 0.47 * math.cos(q), 0.47 * math.sin(q), ytop + 0.15)))
-    # arms: brackets on the main boxes' front corners, box-section struts running straight (parallel to the
-    # box sides) down to clevises on the cover rim
+    # arms on the outer edges of the unit, running straight (parallel to the box sides) to clevises on the cover
+    # rim: the left one from a bracket high on the left box, the right one from a low bracket on the side box
     lf_c = S3_RING - 0.06                                     # clevis on the cover rim
-    for ls in (-0.64, 0.64):
-        put(box(0.09, 0.18, 0.16, center=(0, 0, 0)), DRV_FRONT - 0.07, ls, yb + 0.45)
-        top = at(DRV_FRONT + 0.02, ls, yb + 0.45)
+    for ls, yh in ((DRV_HALF + 0.045, 0.42), (-DRV_HALF - 0.045, 0.14)):
+        put(box(0.1, 0.18, 0.16, center=(0, 0, 0)), DRV_FRONT - 0.07, ls, yb + yh)
+        top = at(DRV_FRONT + 0.02, ls, yb + yh)
         bot = at(lf_c, ls, ytop + 0.22)
         ctx.add(pt, taper_beam(top, bot, 0.09, 0.13, 0.08, 0.11, cham=0.2))
         put(box(0.1, 0.14, 0.14, center=(0, 0, 0)), lf_c, ls, ytop + 0.17)
@@ -787,4 +789,4 @@ def register(m):
     m.alloc('perf', 64, 128, paint_perf)
     for nm, (w_m, d_m) in DRV_LIDS.items():                  # ~160 px/m
         m.alloc(nm, int(round(w_m * 160)), int(round(d_m * 160)), lambda L, r, a=w_m, b=d_m: paint_bolt_frame(L, r, a, b))
-    m.alloc('drv_rail', 208, 14, lambda L, r: paint_bolt_row(L, r, 1.3))
+    m.alloc('drv_rail', int(round(2 * DRV_HALF * 160)), 14, lambda L, r: paint_bolt_row(L, r, 2 * DRV_HALF))
