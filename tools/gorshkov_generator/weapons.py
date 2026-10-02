@@ -27,6 +27,42 @@ def _faces(c, uvs, polys, node=None):
     c.add(uvs, (P, N, UV, I), node=node)
 
 
+def plane_solid(c, uvs, planes, xf=None, node=None):
+    """convex solid bounded by half-spaces n . p <= d (planes = [(n, d), ...]); xf maps local points to world.
+    Vertices are the feasible intersections of plane triples; each face polygon is sorted round its centre."""
+    import itertools
+    Nn = np.array([np.asarray(n, float) for n, _ in planes]); D = np.array([d for _, d in planes], float)
+    V = []
+    for i, j, k in itertools.combinations(range(len(planes)), 3):
+        A = Nn[[i, j, k]]
+        if abs(np.linalg.det(A)) < 1e-9:
+            continue
+        p = np.linalg.solve(A, D[[i, j, k]])
+        if np.all(Nn @ p <= D + 1e-7) and not any(np.linalg.norm(p - v) < 1e-6 for v in V):
+            V.append(p)
+    polys = []
+    for n, d in zip(Nn, D):
+        on = [v for v in V if abs(n @ v - d) < 1e-6]
+        if len(on) < 3:
+            continue
+        cen = np.mean(on, axis=0)
+        nn = normalize(n)
+        u = normalize(on[0] - cen)
+        w = np.cross(nn, u)
+        order = np.argsort([math.atan2((v - cen) @ w, (v - cen) @ u) for v in on])
+        polys.append([xf(on[q]) if xf else on[q] for q in order])
+    _faces(c, uvs, polys, node=node)
+
+
+def plane_through(p0, p1, p2, inside):
+    """half-space (n, d) of the plane through three points, oriented so that `inside` satisfies n . p <= d."""
+    p0, p1, p2 = (np.asarray(p, float) for p in (p0, p1, p2))
+    n = np.cross(p1 - p0, p2 - p0)
+    if n @ np.asarray(inside, float) > n @ p0:
+        n = -n
+    return n, float(n @ p0)
+
+
 def loft_solid(c, uvs, rings, node=None):
     """closed solid through a list of same-size 3D rings (end caps as fans); faces point outward."""
     polys = [list(rings[0])[::-1], list(rings[-1])]
@@ -41,39 +77,67 @@ def loft_solid(c, uvs, rings, node=None):
 # =============================================================================================
 # A-192M "Armat" 130 mm gun
 # =============================================================================================
-# Turret, local frame on the training axis (z forward, x port, y above the deck). Shapes follow the Arsenal
-# plant photographs of a finished mount (2021) and the photographs of Admiral Gorshkov (2018) and Admiral
-# Kasatonov (2021); sizes follow the 1:500 plan and profile:
-# - an octagonal skirt with vertical sides;
-# - above it two sloped cheek blocks with the gun slot between them, open at the front and through the
-#   forward roof;
-# - a rear block under the flat roof;
-# - in the slot, the bronze-coloured cradle drum and the long barrel with a thick muzzle crown.
-GUN_SKIRT = (0.5, 1.6, ((1.0, 2.55), (1.85, 1.75), (1.85, -2.4), (1.2, -3.0)))     # y0, y1, half outline (x, z)
+# Turret, local frame on the training axis (z forward, x port, y above the deck). Sizes come from the 1:500
+# plan and both profiles. Shapes come from the Arsenal plant photograph of a finished mount (2021), the Arsenal
+# design-bureau renderings, and photographs of Admiral Gorshkov (2018) and Admiral Kasatonov (2020, 2021).
+# Every part is a convex solid cut by planes:
+# - Skirt: an octagon with vertical sides. A 2 m wide nose face carries the bolted oval hatch, and 45 deg
+#   chamfers widen it to the full beam.
+# - Upper body: sides leaning in about 12 deg, then large chamfers along the roof edges, which leave a roof
+#   about 2.2 m wide (Kasatonov photographs, 2020).
+# - Cheeks: one on each side of the gun slot. Each front is a ramp rising about 33 deg from the nose to the
+#   roof (profile: B 23.5 at 8.0 m to B 27.0 at 10.15 m). A triangular facet cuts off its outer lower corner.
+# - Rear block: behind the slot, with the back of the roof bevelled down to the vertical rear face.
+# - In the slot: the bronze-coloured cradle drum and the long barrel with a thick muzzle crown.
+GUN_SKIRT = (0.5, 1.75, ((1.0, 2.65), (1.85, 1.8), (1.85, -2.3), (1.2, -2.85)))  # y0, y1, half outline (x, z)
 GUN_ROOF = 3.7
-GUN_UPPER_HW = (1.82, 1.4)    # half-width of the upper body at the skirt top and at the roof (sides lean in)
-GUN_SLOT = (0.78, -0.95)      # half-width of the gun slot, z of its back wall
-GUN_CHEEK = (2.45, 1.75, 0.75)  # cheek front: inner foot z, outer foot z, inner top z
-GUN_AXIS = (-0.05, 2.5)       # trunnions near the training axis: z, height above the deck
-GUN_BARREL = 7.5              # trunnion to muzzle (muzzle at B 19.0 on the profile)
+GUN_SIDE = ((1.85, 1.75), (1.52, 3.3), (1.08, 3.7))    # upper half section: side foot, chamfer knee, roof edge
+GUN_SLOT = (0.6, -1.3)        # half-width of the gun slot, z of its back wall
+GUN_RAMP_TOP = -0.35          # z of the roof's front edge, where the cheek ramps end (about 33 deg)
+GUN_FACET_Y = 2.85            # height where the outer facet of a cheek meets its side
+GUN_REAR = (-2.85, (3.1, -2.8), (3.7, -2.15))   # rear face z; the bevel across the back of the roof (y, z) to (y, z)
+GUN_AXIS = (-0.45, 2.65)      # trunnions at the back of the slot: z, height above the deck
+GUN_BARREL = 7.9              # trunnion to muzzle (muzzle at B 19.0 on the profile)
+GUN_ELEV = 3.0                # barrel elevation as built (deg)
 SHIELD = (3.55, 1.35, 35.0)   # deck shield ring: radius, height, half-angle of the opening astern
 
 
-def _cheek(c, uvs, sx, W):
-    """one cheek block (sx = +1 port, -1 starboard): planar sloping front, inner slot wall, outer side
-    leaning in, flat top at the roof."""
-    y0, y1 = GUN_SKIRT[1], GUN_ROOF
-    hs, zs = GUN_SLOT
-    xo0, xo1 = GUN_UPPER_HW
-    za, zb, ze = GUN_CHEEK
-    A, B, E = np.array([hs, y0, za]), np.array([xo0, y0, zb]), np.array([hs, y1, ze])
-    n = np.cross(B - A, E - A)
-    zf = A[2] - (n[0] * (xo1 - A[0]) + n[1] * (y1 - A[1])) / n[2]   # outer top corner on the front plane
-    pts = {'A': A, 'B': B, 'C': (xo0, y0, zs), 'D': (hs, y0, zs), 'E': E, 'F': (xo1, y1, zf), 'G': (xo1, y1, zs),
-           'H': (hs, y1, zs)}
-    P = {k: W(np.array([sx * v[0], v[1], v[2]])) for k, v in pts.items()}
-    faces = ['ABCD', 'EFGH', 'ABFE', 'BCGF', 'DCGH', 'ADHE']
-    _faces(c, uvs, [[P[k] for k in f] for f in faces])
+def _side_x(y):
+    """half-width of the upper body's leaning side face at height y."""
+    (x0, y0), (x1, y1), _ = GUN_SIDE
+    return x0 + (x1 - x0) * (y - y0) / (y1 - y0)
+
+
+def _ramp_z(y):
+    """z of the cheek ramp at height y (a plane through the nose foot line and the roof's front edge)."""
+    y0, zn = GUN_SKIRT[1], GUN_SKIRT[2][0][1]
+    return zn + (GUN_RAMP_TOP - zn) * (y - y0) / (GUN_ROOF - y0)
+
+
+def _gun_planes():
+    """half-spaces of the skirt and of the upper body (local frame)."""
+    ys0, y0, half = GUN_SKIRT
+    (xn, zn), (xc, zc), (xs, zrc), (xr, zr) = half
+    inside = (0.0, (y0 + GUN_ROOF) / 2, 0.0)
+    X, Y, Z = np.eye(3)
+    plan = [(Z, zn), (X, xs), (-X, xs), (-Z, -zr)]
+    for sx in (1, -1):
+        plan.append(plane_through((sx * xn, 0, zn), (sx * xc, 0, zc), (sx * xc, 1, zc), (0, 0, 0)))
+        plan.append(plane_through((sx * xs, 0, zrc), (sx * xr, 0, zr), (sx * xr, 1, zr), (0, 0, 0)))
+    skirt = plan + [(-Y, -ys0), (Y, y0)]
+    (x0, _), (xk, yk), (x1, y1) = GUN_SIDE
+    zt = GUN_RAMP_TOP
+    zrear, (yb0, zb0), (yb1, zb1) = GUN_REAR
+    ya = GUN_FACET_Y
+    upper = plan + [(-Y, -y0), (Y, y1),
+                    plane_through((0, y0, zn), (1, y0, zn), (0, y1, zt), inside),            # cheek ramps
+                    plane_through((0, yb0, zb0), (1, yb0, zb0), (0, yb1, zb1), inside)]      # bevel across the back
+    for sx in (1, -1):
+        upper.append(plane_through((sx * x0, y0, 0), (sx * x0, y0, 1), (sx * xk, yk, 0), inside))     # side
+        upper.append(plane_through((sx * xk, yk, 0), (sx * xk, yk, 1), (sx * x1, y1, 0), inside))     # roof chamfer
+        pa = (sx * _side_x(ya), ya, _ramp_z(ya))
+        upper.append(plane_through((sx * xn, y0, zn), (sx * xc, y0, zc), pa, inside))               # corner facet
+    return skirt, upper
 
 
 def a192m(c, Bc, ydeck, train=0.0, node='A192M'):
@@ -120,48 +184,48 @@ def a192m(c, Bc, ydeck, train=0.0, node='A192M'):
     y0, y1, half = GUN_SKIRT
     c.add(c.sw('mid'), cylinder(1.95, y0, seg=32, caps=(False, True)), xf=M(o))
     c.add(c.sw('dark'), cylinder(2.0, 0.07, seg=32, caps=(False, True), y0=y0 - 0.07), xf=M(o))
-    # skirt: octagonal band with vertical sides
-    ring = [(x, z) for (x, z) in half] + [(-x, z) for (x, z) in half[::-1]]
-    loft_solid(c, c.paint, [[W((x, y, z)) for (x, z) in ring] for y in (y0, y1)])
-    # rear block under the roof: sides leaning in, rear corners chamfered, the rear top edge rounded off
+    # skirt, cheeks either side of the gun slot, rear block, and the slot floor sloping down to the nose
     hs, zs = GUN_SLOT
-    xo0, xo1 = GUN_UPPER_HW
-
-    def rear(y, hw, zrc, zr, hr):
-        return [W((hw, y, zs)), W((hw, y, zrc)), W((hr, y, zr)), W((-hr, y, zr)), W((-hw, y, zrc)), W((-hw, y, zs))]
-    k = lambda y: xo0 + (xo1 - xo0) * (y - y1) / (GUN_ROOF - y1)
-    loft_solid(c, c.paint, [rear(y1, xo0, -2.38, -2.96, 1.18), rear(3.42, k(3.42), -2.3, -2.85, 0.98),
-                            rear(GUN_ROOF, xo1, -1.9, -2.42, 0.85)])
-    # cheeks either side of the gun slot, and the slot floor sloping down to the skirt front
-    for sx in (1, -1):
-        _cheek(c, c.paint, sx, W)
-    chin = [(2.45, y1), (2.45, y1 + 0.05), (1.15, 1.88), (zs, 1.88), (zs, y1)]
-    _faces(c, c.paint, [[W((hs, y, z)) for (z, y) in chin], [W((-hs, y, z)) for (z, y) in chin]] +
-           [[W((hs, chin[i][1], chin[i][0])), W((hs, chin[(i + 1) % 5][1], chin[(i + 1) % 5][0])),
-             W((-hs, chin[(i + 1) % 5][1], chin[(i + 1) % 5][0])), W((-hs, chin[i][1], chin[i][0]))] for i in range(5)])
-    # details: round hatch in the skirt front, roof hatch and sight, vents, rear door and rungs, side hatches
-    c.add(c.paint, cylinder(0.24, 0.03, seg=16, caps=(True, False)), xf=M(W((0.0, 1.0, 2.55)), R @ rot_x(math.pi / 2)))
-    c.add(c.sw('dark'), cylinder(0.25, 0.025, seg=16, caps=(False, False)), xf=M(W((0.0, 1.0, 2.55)), R @ rot_x(math.pi / 2)))
-    c.add(c.sw('mid'), rbox(0.72, 0.06, 0.85, r=0.12, seg=1), xf=M(W((0.62, GUN_ROOF, -1.55)), R))
-    c.add(c.sw('mid'), rbox(0.42, 0.26, 0.5, r=0.06, seg=1, bevel=0.03), xf=M(W((-0.7, GUN_ROOF, -1.1)), R))
-    c.add(c.sw('glass'), box(0.3, 0.14, 0.03, center=(0, 0, 0)), xf=M(W((-0.7, GUN_ROOF + 0.15, -0.84)), R))
-    for x in (0.35, -0.3):
-        c.add(c.sw('mid'), cylinder(0.11, 0.12, seg=8), xf=M(W((x, GUN_ROOF, -2.05))))
+    X, Y, Z = np.eye(3)
+    skirt, upper = _gun_planes()
+    plane_solid(c, c.paint, skirt, xf=W)
+    plane_solid(c, c.paint, upper + [(-X, -hs), (-Z, -zs)], xf=W)
+    plane_solid(c, c.paint, upper + [(X, -hs), (-Z, -zs)], xf=W)
+    plane_solid(c, c.paint, upper + [(Z, zs)], xf=W)
+    zn = half[0][1]
+    chin = [(X, hs), (-X, hs), (-Y, -y1), (Z, zn), (-Z, -zs), (Y, 2.15),
+                        plane_through((0, y1 + 0.05, zn), (1, y1 + 0.05, zn), (0, 2.15, 0.9), (0, y1, 0))]
+    plane_solid(c, c.paint, chin, xf=W)
+    # details: bolted oval hatch in the nose, roof hatch and sight, vents, rear door and rungs, side hatches
+    c.add(c.paint, rbox(0.42, 0.52, 0.03, r=0.18, seg=2, y0=-0.26), xf=M(W((0.0, 1.12, zn + 0.005)), R))
+    c.add(c.sw('dark'), rbox(0.46, 0.56, 0.02, r=0.2, seg=2, y0=-0.28), xf=M(W((0.0, 1.12, zn - 0.002)), R))
+    for k in range(10):                                        # bolts round the hatch
+        aa = 2 * math.pi * k / 10
+        c.add(c.sw('mid'), box(0.03, 0.03, 0.02, center=(0, 0, 0)),
+              xf=M(W((0.25 * math.cos(aa), 1.12 + 0.31 * math.sin(aa), zn + 0.02)), R))
+    c.add(c.sw('mid'), rbox(0.5, 0.06, 0.45, r=0.08, seg=1), xf=M(W((0.42, GUN_ROOF, -1.75)), R))
+    c.add(c.sw('mid'), rbox(0.36, 0.26, 0.42, r=0.06, seg=1, bevel=0.03), xf=M(W((-0.45, GUN_ROOF, -1.7)), R))
+    c.add(c.sw('glass'), box(0.26, 0.14, 0.03, center=(0, 0, 0)), xf=M(W((-0.45, GUN_ROOF + 0.15, -1.48)), R))
+    for (x, z) in ((0.0, -2.0), (0.75, -1.0)):
+        c.add(c.sw('mid'), cylinder(0.09, 0.1, seg=8), xf=M(W((x, GUN_ROOF, z))))
+    zr = GUN_REAR[0]
     for kk in range(5):
-        c.add(c.sw('dark'), box(0.45, 0.04, 0.05, center=(0, 0, 0)), xf=M(W((0.9, 0.95 + kk * 0.42, -3.02)), R))
-    c.add(c.sw('mid'), box(0.8, 1.5, 0.02, center=(0, 0, 0)), xf=M(W((-0.45, 1.3, -3.0)), R))
+        c.add(c.sw('dark'), box(0.45, 0.04, 0.05, center=(0, 0, 0)), xf=M(W((0.75, 0.95 + kk * 0.42, zr - 0.02)), R))
+    c.add(c.sw('mid'), box(0.8, 1.5, 0.02, center=(0, 0, 0)), xf=M(W((-0.45, 1.3, zr - 0.005)), R))
+    lean = math.atan((GUN_SIDE[0][0] - GUN_SIDE[1][0]) / (GUN_SIDE[1][1] - GUN_SIDE[0][1]))
     for sx in (1, -1):
-        c.add(c.paint, rbox(0.03, 0.9, 1.1, r=0.1, seg=1, y0=-0.45), xf=M(W((sx * 1.6, 2.5, -1.4)), R))
+        c.add(c.paint, rbox(0.03, 0.9, 0.8, r=0.1, seg=1, y0=-0.45), xf=M(W((sx * (_side_x(2.5) + 0.015), 2.5, -1.7)),
+                                                                          R @ rot_z(sx * lean)))
     # elevating mass: cradle drum across the slot and the barrel (child node, pivot on the trunnions)
-    elev = math.radians(3.0)
+    elev = math.radians(GUN_ELEV)
     piv = W((0.0, GUN_AXIS[1], GUN_AXIS[0]))
     c.b.node(node + '_Gun', parent=node, translation=piv)
     dirv = R @ np.array([0.0, math.sin(elev), math.cos(elev)])
-    c.add(c.sw('tan'), cylinder(0.6, 2 * hs - 0.06, seg=24, caps=(True, True), y0=-(hs - 0.03)),
+    c.add(c.sw('tan'), cylinder(0.55, 2 * hs - 0.06, seg=24, caps=(True, True), y0=-(hs - 0.03)),
           xf=M(piv, R @ rot_z(math.pi / 2)))
     L = GUN_BARREL
-    prof = [(0.0, 0.45), (0.32, 0.45), (0.32, 0.9), (0.25, 1.0), (0.24, 2.2), (0.28, 2.25), (0.28, 2.4), (0.17, 2.5),
-            (0.155, 4.5), (0.175, 4.55), (0.175, 4.7), (0.15, 4.75), (0.14, L - 0.62), (0.19, L - 0.58),
+    prof = [(0.0, 0.5), (0.32, 0.5), (0.32, 0.95), (0.25, 1.05), (0.24, 2.6), (0.28, 2.65), (0.28, 2.8), (0.17, 2.9),
+            (0.155, 4.9), (0.175, 4.95), (0.175, 5.1), (0.15, 5.15), (0.14, L - 0.62), (0.19, L - 0.58),
             (0.19, L - 0.06), (0.16, L), (0.0, L)]
     c.add(c.paint, lathe(prof, seg=16), xf=M(piv, axis_frame(dirv)))
     c.add(c.sw('black'), disc(0.07, seg=12), xf=M(piv + dirv * (L + 0.002), axis_frame(dirv)))
