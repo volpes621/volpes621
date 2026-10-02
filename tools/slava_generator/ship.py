@@ -394,22 +394,32 @@ def paint_vds_door(L, rect):
     L.mask_apply(L.draw_mask(w, h, ring), col=PAL['brass'], metal=0.8, x0=x0, y0=y0)
 
 
-def paint_bridge_windows(L, rect):
-    """front of the bridge: row of 9 rectangular windows with rounded corners."""
+def paint_window_row(L, rect, n, frac=0.82):
+    """row of n bridge windows filling the decal height: rounded frames, dark glass with a sky gradient,
+    wall-coloured mullions between them (transparent elsewhere)."""
     x0, y0, x1, y1 = rect
     w, h = x1 - x0, y1 - y0
-    L.rect(x0, y0, x1, y1, col=PAL['super'], alpha=1.0)
-    n = 9
+    L.rect(x0, y0, x1, y1, col=PAL['super'], alpha=0.0)
+    pitch = w / n
 
-    def fn(d, s):
+    def frames(d, s):
         for k in range(n):
-            a = (k + 0.08) / n * w * s
-            b = (k + 0.92) / n * w * s
-            d.rounded_rectangle([a, 0.18 * h * s, b, 0.82 * h * s], radius=int(0.12 * h * s), fill=255)
-    m = L.draw_mask(w, h, fn)
+            a = (k + 0.5 - frac / 2) * pitch
+            b = (k + 0.5 + frac / 2) * pitch
+            d.rounded_rectangle([a * s, 0.04 * h * s, b * s, 0.96 * h * s], radius=int(0.18 * h * s), fill=255)
+
+    def glass(d, s):
+        for k in range(n):
+            a = (k + 0.5 - frac / 2) * pitch + 0.09 * h
+            b = (k + 0.5 + frac / 2) * pitch - 0.09 * h
+            d.rounded_rectangle([a * s, 0.15 * h * s, b * s, 0.85 * h * s], radius=int(0.12 * h * s), fill=255)
+    L.mask_apply(L.draw_mask(w, h, frames), col=PAL['dark'] * 1.1, alpha=1.0, add_height=0.5, x0=x0, y0=y0)
+    m = L.draw_mask(w, h, glass)
     L.mask_apply(m, col=PAL['glass'], rough=0.08, metal=0.6, add_height=-0.6, x0=x0, y0=y0)
-    g = np.linspace(0.28, 0.0, h)[:, None] * m
+    g = np.linspace(0.3, 0.0, h)[:, None] * m
     L.col[y0:y1, x0:x1] += g[..., None] * np.array([0.2, 0.24, 0.28])
+    a = L.alpha[y0:y1, x0:x1]
+    L.alpha[y0:y1, x0:x1] = np.where(a > 0.5, 1.0, 0.0)
 
 
 def paint_louvre_panel(L, rect):
@@ -460,7 +470,9 @@ def register_decals(m):
     m.alloc('panel_dark', 64, 64, lambda L, r: paint_panel(L, r, PAL['dark'] * 1.1, lines=3))
     m.alloc('hangar_door', 128, 128, paint_hangar_door)
     m.alloc('vds_door', 96, 96, paint_vds_door)
-    m.alloc('bridge_win', 384, 48, paint_bridge_windows)
+    m.alloc('brwin7', 448, 40, lambda L, r: paint_window_row(L, r, 7))
+    m.alloc('brwin4', 256, 40, lambda L, r: paint_window_row(L, r, 4))
+    m.alloc('brwin1', 40, 40, lambda L, r: paint_window_row(L, r, 1, frac=0.9))
     m.alloc('louvre', 64, 96, paint_louvre_panel)
     m.alloc('vlouvre', 256, 128, paint_vert_louvre)
     m.alloc('dome', 128, 128, paint_top_dome)
@@ -647,50 +659,171 @@ def forward_deckhouse(m):
 # =============================================================================================
 # bridge block, gallery, bridge house (sheet 5)
 # =============================================================================================
+# bridge block after Kuleshov sheet 5 (side, front and plan views registered to sheet 1) and the Moskva
+# 2009-17 / Ustinov 2018 photos. Plan outlines are (B, x>=0) halves, front to back.
+BR_Y0, BR_YW, BR_Y1 = 17.48, 19.45, 19.95                     # bridge base (BL2 roof), window-band top, roof
+BR_BASE = [(61.2, 2.6), (63.55, 5.0), (66.4, 5.0), (68.0, 3.5), (74.0, 3.5)]
+BR_WTOP = [(60.85, 2.85), (63.2, 5.38), (66.4, 5.38), (68.0, 3.72), (74.0, 3.72)]
+BR_ROOF = [(61.18, 2.72), (63.34, 5.05), (66.26, 5.05), (67.86, 3.39), (74.0, 3.39)]
+BR_WIN = (18.88, 19.38)                                      # window row
+WALKWAY = [(66.45, 5.05), (66.6, 6.17), (68.7, 6.22), (69.13, 5.55), (69.3, 5.41), (71.33, 5.41), (73.87, 5.92),
+           (76.06, 5.8), (82.5, 5.8)]                         # walkway bulwark line (port side)
+WALK_TOP = 18.75                                              # bulwark top
+
+
+def bulwark(c, pts_Bx, y0, y1, t=0.08):
+    """thin solid bulwark along an open polyline [(B, x)] on one side of the ship, thickened inboard:
+    outer and inner faces, top cap and end caps (flat-shaded, planar UVs in metres)."""
+    P2 = np.array([(x, zB(B)) for (B, x) in pts_Bx], float)
+    side = 1.0 if np.mean(P2[:, 0]) > 0 else -1.0
+    n = len(P2)
+    nrm = []
+    for i in range(n - 1):
+        d = P2[i + 1] - P2[i]
+        d = d / np.linalg.norm(d)
+        nn = np.array([d[1], -d[0]])
+        if nn[0] * side > 0:                                  # make it point inboard
+            nn = -nn
+        nrm.append(nn)
+    inner = []
+    for i in range(n):
+        a = nrm[max(i - 1, 0)]; b = nrm[min(i, n - 2)]
+        m_ = a + b
+        m_ = m_ / np.linalg.norm(m_)
+        inner.append(P2[i] + m_ * t / max(0.35, float(np.dot(m_, b))))
+    inner = np.array(inner)
+    polys = []
+
+    def add(poly, want):                                      # want: intended outward direction (x, y, z)
+        q = np.array(poly, float)
+        nn = np.cross(q[1] - q[0], q[2] - q[0])
+        polys.append(q if np.dot(nn, want) >= 0 else q[::-1])
+    for i in range(n - 1):
+        o0, o1, i0, i1 = P2[i], P2[i + 1], inner[i], inner[i + 1]
+        w_in = np.array([nrm[i][0], 0.0, nrm[i][1]])
+        add([(o0[0], y0, o0[1]), (o1[0], y0, o1[1]), (o1[0], y1, o1[1]), (o0[0], y1, o0[1])], -w_in)
+        add([(i1[0], y0, i1[1]), (i0[0], y0, i0[1]), (i0[0], y1, i0[1]), (i1[0], y1, i1[1])], w_in)
+        add([(o0[0], y1, o0[1]), (o1[0], y1, o1[1]), (i1[0], y1, i1[1]), (i0[0], y1, i0[1])], np.array([0, 1.0, 0]))
+    for (o, ii, j) in ((P2[0], inner[0], 1), (P2[-1], inner[-1], n - 2)):
+        d = P2[j] - o
+        add([(o[0], y0, o[1]), (ii[0], y0, ii[1]), (ii[0], y1, ii[1]), (o[0], y1, o[1])], -np.array([d[0], 0.0, d[1]]))
+    c.add(c.paint, flat_poly_faces(polys))
+
+
+def _face_pt(base0, base1, top0, top1, u, h, y0=BR_Y0, y1=BR_YW):
+    """point on a raked wall face given by its base edge (at y0) and top edge (at y1), (B, x) pairs."""
+    t = (h - y0) / (y1 - y0)
+    b = (1 - u) * np.array(base0) + u * np.array(base1)
+    tp = (1 - u) * np.array(top0) + u * np.array(top1)
+    B, x = (1 - t) * b + t * tp
+    return P3(B, x, h)
+
+
+def face_decal(c, name, base0, base1, top0, top1, u0, u1, h0, h1, off=0.025):
+    """decal quad lying on a raked wall face (u along the face from base0 to base1, h height)."""
+    q = [_face_pt(base0, base1, top0, top1, u0, h0), _face_pt(base0, base1, top0, top1, u1, h0),
+         _face_pt(base0, base1, top0, top1, u1, h1), _face_pt(base0, base1, top0, top1, u0, h1)]
+    nrm = normalize(np.cross(q[1] - q[0], q[3] - q[0]))
+    cen = P3(*(((np.array(base0) + np.array(base1)) / 2)), h0)
+    inside = P3(64.5, 0.0, h0)
+    if np.dot(nrm, cen - inside) < 0:
+        nrm = -nrm
+    q = [p + nrm * off for p in q]
+    Pq, Nq, UVq, Iq = _quad(q[0], q[1], q[2], q[3], uv=[(0, 1), (1, 1), (1, 0), (0, 0)], n=nrm)
+    if np.dot(np.cross(Pq[1] - Pq[0], Pq[2] - Pq[0]), nrm) < 0:
+        Iq = Iq[:, ::-1]
+    c.add(c.rect(name), (Pq, Nq, UVq, Iq))
+
+
 def bridge(m):
+    """bridge block (Kuleshov sheet 5, Moskva/Ustinov photos):
+    - BL1 (to 15.0) and, under the bridge, a narrow level (15.0-17.48, +-3.6) whose raked front continues the
+      bridge front; aft of B 65.8 the block widens to +-4.85 up to the bridge deck;
+    - the bridge house rises from 17.48: walls leaning out (front 0.35 m, sides 0.38 m), one row of windows
+      (7 on the front, 4 on each chamfer and side), a sloped band to the roof at 19.95; it overhangs the level
+      below by up to 1.4 m and narrows aft of B 66.4 to the upper deckhouse running to the tower;
+    - an open walkway at 17.48 along both sides from B 66.4 aft, behind a solid bulwark (bulge at B 66.6-68.7
+      with the guards' crest), and a small lantern platform at the front."""
     c = m.ctx; b = m.b
     b.node('Superstructure')
     y0 = dmin(58.6, 80.8) - 0.3
     house(c, sym_poly([(58.6, 3.65), (80.75, 3.65)]), y0, 15.0, lip=0.12, bevel=0.3, bevel_where=lambda B, x: B < 60)  # BL1
-    house(c, sym_poly([(61.5, 4.85), (80.75, 4.85)]), y0, 17.5, lip=0.12, bevel=0.3, bevel_where=lambda B, x: B < 62)  # BL2
-    # gallery deck with the bridge wings
-    gal = sym_poly([(61.0, 5.2), (61.0, 7.25), (64.6, 7.25), (65.4, 6.2), (82.0, 6.2)])
-    slab(c, gal, 17.5, 18.65)
-    rail_poly(c, gal, 18.65, inset=0.1)
-    # bridge house: sloped front (top overhangs 0.5 m), chamfered front corners
-    bot = sym_poly([(61.25, 2.6), (63.15, 5.3), (73.8, 5.3)])
-    top = sym_poly([(60.75, 2.83), (62.7, 5.3), (73.8, 5.3)])
-    house(c, bot, 18.65, 20.0, top_poly_Bx=top, lip=0.14, bevel=0.25, bevel_where=lambda B, x: B > 73)
-    rail_poly(c, top, 20.0, sides=(0, 1, 2, 4, 5))
-    # windows
-    nrm = normalize(np.array([0.0, 0.5 / 1.35, 1.0]))
-    yb_, yt_ = 18.85, 19.75
-    def fz(B0, B1, y):
-        return zB(B0 + (B1 - B0) * (y - 18.65) / 1.35)
-    q = _quad((2.58, yb_, fz(61.25, 60.75, yb_) + 0.04), (-2.58, yb_, fz(61.25, 60.75, yb_) + 0.04),
-              (-2.6, yt_, fz(61.25, 60.75, yt_) + 0.04), (2.6, yt_, fz(61.25, 60.75, yt_) + 0.04),
-              uv=[(1, 1), (0, 1), (0, 0), (1, 0)], n=nrm)
-    c.add(c.rect('bridge_win'), q)
-    for s in (1, -1):
-        # chamfer windows (placed on the mid-height chamfer line, normal = outward/forward)
-        pa_b = P3(61.0, s * 2.71, yb_); pb_b = P3(62.93, s * 5.3, yb_)
-        strip(c, 'WINDOW', st.WIN_REPEAT_M, pa_b if s < 0 else pb_b, pb_b if s < 0 else pa_b, 0.85,
-              (s * 0.6, 0.0, 0.8), offset=0.05)
-    side_strip(c, 'WINDOW', 63.4, 67.0, 5.32, 18.85, 0.85)
-    side_strip(c, 'PORTS', 67.5, 73.0, 5.32, 18.8, 0.9)
-    side_strip(c, 'PORTS', 62.0, 80.0, 4.87, 15.6, 1.0)
+    house(c, sym_poly([(61.5, 4.85), (65.9, 4.85)]), y0, 15.0, lip=0.12, top='deck')                               # BL2 low
+    house(c, sym_poly([(65.8, 4.85), (80.75, 4.85)]), y0, BR_Y0, top='deck')                                     # BL2 wide
+    nb = [(61.7, 2.5), (62.6, 3.6), (65.9, 3.6)]
+    nt = [(61.2, 2.5), (62.2, 3.6), (65.9, 3.6)]
+    house(c, sym_poly(nb), 15.0, BR_Y0, top_poly_Bx=sym_poly(nt), top=None)                                    # BL2 narrow
+    # railing round the 15 m deck in front of and beside the narrow level
+    for sx in (1, -1):
+        railing_pts(c, [P3(65.7, sx * 4.75, 15.02), P3(61.62, sx * 4.75, 15.02), P3(61.62, sx * 3.55, 15.02),
+                        P3(58.72, sx * 3.55, 15.02)])
+    railing_pts(c, [P3(58.72, 3.55, 15.02), P3(58.72, -3.55, 15.02)])
+    # bridge house: raked walls to the window-band top, sloped band to the roof, underside over the overhang
+    house(c, sym_poly(BR_BASE), BR_Y0 - 0.02, BR_YW, top_poly_Bx=sym_poly(BR_WTOP), top=None, bottom=True)
+    house(c, sym_poly(BR_WTOP), BR_YW, BR_Y1, top_poly_Bx=sym_poly(BR_ROOF), top='deck')
+    rail_poly(c, sym_poly(BR_ROOF), BR_Y1, inset=0.1, sides=(0, 1, 2, 3, 5, 6, 7, 8, 9))
+    # windows: 7 on the front face, 4 on each chamfer and side; door and a narrow window on the aft corner
+    fb0, fb1 = (BR_BASE[0][0], -BR_BASE[0][1]), BR_BASE[0]
+    ft0, ft1 = (BR_WTOP[0][0], -BR_WTOP[0][1]), BR_WTOP[0]
+    face_decal(c, 'brwin7', fb0, fb1, ft0, ft1, 0.03, 0.97, *BR_WIN)
+    for sx in (1, -1):
+        bs = [(B, sx * x) for (B, x) in BR_BASE]
+        ts = [(B, sx * x) for (B, x) in BR_WTOP]
+        face_decal(c, 'brwin4', bs[0], bs[1], ts[0], ts[1], 0.05, 0.95, *BR_WIN)
+        face_decal(c, 'brwin4', bs[1], bs[2], ts[1], ts[2], 0.05, 0.95, *BR_WIN)
+        face_decal(c, 'brwin1', bs[2], bs[3], ts[2], ts[3], 0.12, 0.3, *BR_WIN)
+        face_decal(c, 'door', bs[2], bs[3], ts[2], ts[3], 0.45, 0.78, BR_Y0 + 0.02, BR_Y0 + 1.8)
+        side_strip(c, 'PORTS', 68.6, 73.4, 3.70, 18.7, 0.7, sides=(sx,))
+    # level below: watertight door and two windows in the raked front, ports on the sides
+    rk = normalize(np.array([0.0, 0.5 / (BR_Y0 - 15.0), 1.0]))
+    for (xx, nm, w_, h_, hc) in ((0.0, 'door', 0.8, 1.75, 15.95), (1.75, 'brwin1', 0.45, 0.42, 16.85),
+                                 (-1.75, 'brwin1', 0.45, 0.42, 16.85)):
+        Bc = 61.7 - 0.5 * (hc - 15.0) / (BR_Y0 - 15.0)
+        decal(c, nm, P3(Bc, xx, hc), rk, w_, h_)
+    side_strip(c, 'PORTS', 62.9, 65.6, 3.62, 16.4, 0.9)
+    side_strip(c, 'PORTS', 66.3, 80.2, 4.87, 16.4, 0.9)
     side_strip(c, 'PORTS', 62.5, 80.0, 4.87, 12.6, 1.0)
     end_strip(c, 'PORTS', 58.6, -3.1, 3.1, 13.6, 1.0, facing=1)
     for s in (1, -1):
-        door(c, 63.0, s * 4.87, 15.0, (s, 0, 0))
-        door(c, 78.5, s * 4.87, 15.0, (s, 0, 0))
-        door(c, 76.0, s * 3.67, dk(76.0, 3.6) - 0.05, (s, 0, 0))
-    # Kite Screech (MR-184) director on the bridge roof
-    D.kite_screech(c, P3(67.7, 0, 20.0))
+        door(c, 64.6, s * 3.62, 15.02, (s, 0, 0))
+        door(c, 72.2, s * 3.75, BR_Y0, (s, 0, 0))
+        door(c, 76.0, s * 4.87, dk(76.0, 4.8) - 0.05, (s, 0, 0))
+    # walkway: floor plate over the overhang, solid bulwark, brackets underneath, railing across the aft end
+    for sx in (1, -1):
+        wl = [(B, sx * x) for (B, x) in WALKWAY]
+        fl = [(66.45, sx * 4.8)] + [(B, sx * x) for (B, x) in WALKWAY[:-1]] + [(80.75, sx * 5.8), (80.75, sx * 4.8)]
+        slab(c, fl if sx > 0 else fl[::-1], BR_Y0 - 0.14, BR_Y0 + 0.02)
+        bulwark(c, wl, BR_Y0 - 0.14, WALK_TOP)
+        for Bk in (67.6, 70.3, 72.8, 75.4, 78.0):
+            xo = float(np.interp(Bk, [p[0] for p in WALKWAY], [p[1] for p in WALKWAY])) - 0.25
+            c.add(c.paint, D.taper_beam(P3(Bk, sx * 4.86, BR_Y0 - 0.95), P3(Bk, sx * xo, BR_Y0 - 0.15),
+                                      0.08, 0.2, 0.08, 0.08, up=(0, 0, 1)))
+        decal(c, 'crest', P3(67.65, sx * 6.2, 18.05), (sx, 0, 0), 0.85, 0.85, offset=0.03)
+    slab(c, [(80.75, 5.8), (82.5, 5.8), (82.5, -5.8), (80.75, -5.8)], BR_Y0 - 0.14, BR_Y0 + 0.02)
+    railing_pts(c, [P3(82.42, 5.72, BR_Y0 + 0.02), P3(82.42, -5.72, BR_Y0 + 0.02)])
+    # lantern platform at the foot of the bridge front, on V brackets
+    lp = sym_poly([(59.1, 1.23), (61.3, 2.05)])
+    slab(c, lp, BR_Y0 - 0.12, BR_Y0)
+    rail_poly(c, lp, BR_Y0, inset=0.06, sides=(0, 2, 3))
+    for sx in (1, -1):
+        c.add(c.paint, D.taper_beam(P3(61.62, sx * 1.5, 16.35), P3(59.45, sx * 1.0, BR_Y0 - 0.12), 0.1, 0.16, 0.08, 0.1))
+    G.lamp(c, P3(59.55, 0.0, BR_Y0), 'white')
+    # roof fittings: signal mast at the front edge (pole, yard, A-frame legs; Moskva 2009-12 photos), Kite Screech
+    # (MR-184), radome, sight pedestals, searchlights at the front corners, whips
+    c.add(c.paint, tube_path([P3(61.62, 0, BR_Y1), P3(61.62, 0, 24.4)], 0.08, seg=6))
+    c.add(c.paint, tube_path([P3(61.62, -1.3, 22.25), P3(61.62, 1.3, 22.25)], 0.045, seg=4))
+    for sx in (1, -1):
+        c.add(c.paint, tube_path([P3(62.35, sx * 0.6, BR_Y1), P3(61.62, 0, 21.4)], 0.045, seg=4))
+    G.lamp(c, P3(61.62, 0, 24.4), 'white')
+    D.kite_screech(c, P3(67.7, 0, BR_Y1))
     b.node('Superstructure')
-    G.radome(c, P3(71.6, 1.6, 20.0), r=0.55, h=1.0)
-    for (B, x) in ((64.1, 3.8), (68.6, -3.8), (71.0, 4.3)):
-        whip(c, P3(B, x, 20.0), 6.0, r=0.05)
+    G.radome(c, P3(71.6, 1.6, BR_Y1), r=0.55, h=1.0)
+    for sx in (1, -1):
+        c.add(c.paint, box(0.6, 0.55, 0.6, center=(0, 0.275, 0)), xf=M(P3(64.3, sx * 2.7, BR_Y1)))
+        c.add(c.sw('dark'), box(0.4, 0.2, 0.45, center=(0, 0.65, 0)), xf=M(P3(64.3, sx * 2.7, BR_Y1)))
+        searchlight(c, P3(62.3, sx * 3.85, BR_Y1), facing=sx * math.radians(45))
+        whip(c, P3(65.9, sx * 4.1, BR_Y1), 6.0, r=0.05)
+        whip(c, P3(67.6, sx * 5.75, BR_Y0), 7.0, r=0.05)
     # low deckhouse aft of the bridge block (B 80.75-85.4, +-3.75, roof 9.6) with intake louvres
     house(c, sym_poly([(80.7, 3.75), (85.4, 3.75)]), dmin(80.7, 85.4) - 0.3, 9.6, lip=0.12, bevel=0.25,
           bevel_where=lambda B, x: B > 85)
@@ -715,6 +848,7 @@ def foremast(m):
     b.node('Superstructure')
     bot = sym_poly([(73.44, 4.06), (80.8, 4.1)])
     top = sym_poly([(77.2, 1.35), (80.3, 1.35)])
+    house(c, bot, BR_Y0, 18.62, top=None, bevel=0.3)                    # vertical foot down to the walkway
     house(c, bot, 18.6, 31.2, top_poly_Bx=top, top='deck', bevel=0.3)
     slab(c, sym_poly([(76.6, 1.9), (80.9, 1.9)]), 31.2, 31.45)
     rail_poly(c, sym_poly([(76.6, 1.9), (80.9, 1.9)]), 31.45)
@@ -735,7 +869,7 @@ def foremast(m):
             G.radome(c, P3(B, s * 5.9, 21.05), r=0.45, h=0.8, seg=10)
     # ladders on the faces
     for s in (1, -1):
-        ladder(c, P3(80.85, s * 2.4, 18.7), P3(80.4, s * 1.0, 31.1), 0.45, normal=(0, 0, -1))
+        ladder(c, P3(80.85, s * 2.4, BR_Y0 + 0.05), P3(80.4, s * 1.0, 31.1), 0.45, normal=(0, 0, -1))
     # tapered Fregat stalk, the rotating Fregat radar and the Front Door director
     c.add(c.paint, lathe([(0.72, 0.0), (0.72, 0.15), (0.6, 0.25), (0.55, 2.0), (0.62, 2.2)], seg=14), xf=M(P3(78.15, 0, 31.4)))
     A.fregat(c, P3(78.15, 0, 33.6))
@@ -1145,7 +1279,6 @@ def fittings(m):
     b.node('Superstructure')
     # searchlights: bridge wings, tower balconies, aft superstructure
     for s in (1, -1):
-        searchlight(c, P3(61.6, s * 6.8, 18.65), facing=s * math.radians(30))
         searchlight(c, P3(77.0, s * (tower_hw(28.0) + 0.9), 28.0), facing=s * math.radians(70))
         searchlight(c, P3(146.0, s * 3.6, 12.2), facing=s * math.radians(40))
     # PK-10 / PK-2 decoy launchers on the 01 level by the funnel and aft
