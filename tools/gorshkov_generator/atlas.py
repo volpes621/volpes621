@@ -69,7 +69,7 @@ PAL = {
     'heli': srgb('3f4446'),
     'mesh': srgb('6e7a82'),
     'wood': srgb('5a4636'),        # bridge-wing decking
-    'tan': srgb('a8936a'),         # cloth boot round the 130 mm barrel
+    'tan': srgb('9c7a48'),         # bronze-coloured cradle drum of the 130 mm gun
 }
 
 # swatch grid in RECT area: 32x32 cells starting at (0, 2016) going right
