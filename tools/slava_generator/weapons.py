@@ -346,56 +346,62 @@ def s300_hatch(ctx, Bc, cx, ytop):
 
 
 def s300_drive(ctx, Bc, cx, ytop):
-    """lid-drive unit over the centre of the eight-cell drum (same orientation on every launcher, per the
-    1984 overhead photo): base frame with rails, two flanged boxes with a bolted seam, upper and side
-    boxes, lifting eyes; the grey loading cover lies on cell lid 0 (aft-port), carried by L-shaped arms."""
+    """lid-drive unit over the centre of the eight-cell drum, squared up to the grey loading cover on cell lid 0
+    (aft-port; same on every launcher, per the 1984 overhead photo): base frame with side rails, two flanged
+    boxes with a bolted seam, upper and side boxes, lifting eyes. The cover lies straight ahead of the boxes
+    and the two L-shaped arms run parallel to the box sides (museum-model close-ups)."""
     pt = ctx.paint
     y0 = ytop + 0.03
-    bx, bxx = Bc - 0.45, cx - 0.3                            # box cluster over the drum centre
-    ctx.add(pt, rbox(1.7, 0.1, 1.8, r=0.12, seg=1), xf=M(P3(bx, bxx, y0)))
-    for dx in (-0.65, 0.65):
-        ctx.add(pt, box(0.1, 0.08, 1.8, center=(0, 0, 0)), xf=M(P3(bx, bxx + dx, y0 + 0.14)))
+    a0 = math.radians(S3_COVER_ANG)
+    ca, sa = math.cos(a0), math.sin(a0)
+    R = rot_y(math.pi - a0)                                   # local +z toward the cover, local x across
+    fw = np.array([sa, 0.0, -ca])                             # world direction toward the cover
+
+    def at(lf, ls, y):
+        """hatch-local point: lf toward the cover, ls across it, y up."""
+        return P3(Bc + lf * ca - ls * sa, cx + lf * sa + ls * ca, y)
+
+    def put(geo, lf, ls, y=0.0):
+        ctx.add(pt, geo, xf=M(at(lf, ls, y), R))
+    c = -0.5                                                  # box cluster centre, behind the drum centre
+    put(rbox(1.7, 0.1, 2.0, r=0.12, seg=1), c + 0.1, 0.0, y0)                     # frame reaching to the cover
+    for ls in (-0.65, 0.65):
+        put(box(0.1, 0.08, 2.0, center=(0, 0, 0)), c + 0.1, ls, y0 + 0.14)       # side rails
     yb = y0 + 0.1
-    for (dx, h, d, dz) in ((0.47, 1.05, 1.4, 0.0), (-0.46, 0.95, 1.3, -0.05)):
-        p = P3(bx + dz, bxx + dx, 0)
-        ctx.add(pt, rbox(0.88, h, d, r=0.05, seg=1, bevel=0.05, y0=yb), xf=M(p))
-        ctx.add(pt, rbox(0.96, 0.06, d + 0.08, r=0.05, seg=1, y0=yb + h - 0.03), xf=M(p))      # flanged lid
-        e = P3(bx + dz, bxx + dx, yb + h + 0.03)                                                # lifting eye
-        ctx.add(pt, pipe([e + np.array([-0.09, 0, 0]), e + np.array([-0.05, 0.12, 0]), e + np.array([0.05, 0.12, 0]),
-                          e + np.array([0.09, 0, 0])], 0.02, seg=3), occ=False)
-    ctx.add(pt, box(0.07, 1.02, 1.45, center=(0, 0, 0)), xf=M(P3(bx, bxx + 0.005, yb + 0.55)))       # bolted seam
-    ctx.add(pt, rbox(1.15, 0.45, 0.7, r=0.05, seg=1, bevel=0.04, y0=yb + 1.02), xf=M(P3(bx - 0.35, bxx + 0.05, 0)))
-    ctx.add(pt, rbox(1.23, 0.06, 0.78, r=0.05, seg=1, y0=yb + 1.44), xf=M(P3(bx - 0.35, bxx + 0.05, 0)))
-    ctx.add(pt, rbox(0.34, 0.8, 1.0, r=0.05, seg=1, bevel=0.03, y0=yb), xf=M(P3(bx - 0.05, bxx - 1.08, 0)))
+    ux = R @ np.array([1.0, 0, 0])
+    for (ls, h, d, df) in ((0.47, 1.05, 1.4, 0.0), (-0.46, 0.95, 1.3, -0.05)):
+        put(rbox(0.88, h, d, r=0.05, seg=1, bevel=0.05, y0=yb), c + df, ls)
+        put(rbox(0.96, 0.06, d + 0.08, r=0.05, seg=1, y0=yb + h - 0.03), c + df, ls)                 # flanged lid
+        e = at(c + df, ls, yb + h + 0.03)                                                          # lifting eye
+        ctx.add(pt, pipe([e - ux * 0.09, e - ux * 0.05 + np.array([0, 0.12, 0]), e + ux * 0.05 + np.array([0, 0.12, 0]),
+                          e + ux * 0.09], 0.02, seg=3), occ=False)
+    put(box(0.07, 1.02, 1.45, center=(0, 0, 0)), c, 0.005, yb + 0.55)                              # bolted seam
+    put(rbox(1.15, 0.45, 0.7, r=0.05, seg=1, bevel=0.04, y0=yb + 1.02), c - 0.35, 0.05)
+    put(rbox(1.23, 0.06, 0.78, r=0.05, seg=1, y0=yb + 1.44), c - 0.35, 0.05)
+    put(rbox(0.34, 0.8, 1.0, r=0.05, seg=1, bevel=0.03, y0=yb), c - 0.05, -1.08)
     # grey loading cover on cell lid 0, with two pins
-    dB, dX = s3_lid(0)
-    cB, cX = Bc + dB, cx + dX
-    ctx.add(pt, lathe([(0.6, 0.0), (0.6, 0.1), (0.55, 0.15), (0.0, 0.15)], seg=24), xf=M(P3(cB, cX, ytop)))
-    cc = P3(cB, cX, ytop + 0.152)
+    ctx.add(pt, lathe([(0.6, 0.0), (0.6, 0.1), (0.55, 0.15), (0.0, 0.15)], seg=24), xf=M(at(S3_RING, 0.0, ytop)))
+    cc = at(S3_RING, 0.0, ytop + 0.152)
     ctx.add(ctx.rect('vls_lid'), _quad(cc + np.array([-0.55, 0, 0.55]), cc + np.array([0.55, 0, 0.55]),
                                        cc + np.array([0.55, 0, -0.55]), cc + np.array([-0.55, 0, -0.55]),
                                        uv=[(0, 1), (1, 1), (1, 0), (0, 0)], n=np.array([0, 1.0, 0])))
-    psi = math.atan2(bxx - cX, bx - cB)                      # direction cover -> drive in (B, x)
     for off in (-1.0, 1.0):
-        pp = P3(cB + 0.47 * math.cos(psi + off * 1.9), cX + 0.47 * math.sin(psi + off * 1.9), ytop + 0.15)
-        ctx.add(pt, lathe([(0.075, 0.0), (0.075, 0.17), (0.055, 0.2), (0.0, 0.21)], seg=8), xf=M(pp))
-    # L-shaped arms: a post on the frame (kept inside its outline) and a raking arm down to a pivot on the
-    # cover rim
-    for off in (-1.0, 1.0):
-        ang = psi + off * math.radians(62)
-        fB, fX = cB + 0.6 * math.cos(ang), cX + 0.6 * math.sin(ang)
-        aB = min(fB + 0.55 * math.cos(psi), bx + 0.78)
-        aX = min(fX + 0.55 * math.sin(psi), bxx + 0.74)
-        f = P3(fB, fX, ytop + 0.18)
-        a = P3(aB, aX, y0 + 0.1)
-        e = P3(aB, aX, y0 + 0.5)
-        ctx.add(pt, taper_beam(a, e, 0.14, 0.18, 0.12, 0.16))
+        q = math.pi + off * 1.9                               # around the cover from its rear
+        ctx.add(pt, lathe([(0.075, 0.0), (0.075, 0.17), (0.055, 0.2), (0.0, 0.21)], seg=8),
+                xf=M(at(S3_RING + 0.47 * math.cos(q), 0.47 * math.sin(q), ytop + 0.15)))
+    # L-shaped arms, parallel to the box sides: a post against the box front and a raking arm down to a
+    # pivot on the cover rim
+    for ls in (-0.56, 0.56):
+        f = at(S3_RING - math.sqrt(0.6 ** 2 - ls ** 2), ls, ytop + 0.18)
+        a = at(c + 0.78, ls, y0 + 0.1)
+        e = at(c + 0.78, ls, y0 + 0.5)
+        ctx.add(pt, taper_beam(a, e, 0.14, 0.18, 0.12, 0.16, up=fw))
         ctx.add(pt, taper_beam(e, f, 0.12, 0.16, 0.1, 0.12))
         ctx.add(pt, cylinder(0.09, 0.18, seg=8), xf=M(f + np.array([0, -0.07, 0])))
-    # junction box at the hatch rim, between two cell lids
-    ja = math.radians(S3_COVER_ANG - 112.5)
+    # red junction box on the hatch rim beside the cover (to its right, seen from the cover side)
+    jq = math.radians(-29.0)
     ctx.add(ctx.sw('red'), rbox(0.3, 0.42, 0.3, r=0.04, seg=1, bevel=0.03, y0=ytop),
-            xf=M(P3(Bc + 1.72 * math.cos(ja), cx + 1.72 * math.sin(ja), 0)))
+            xf=M(at(1.7 * math.cos(jq), 1.7 * math.sin(jq), 0.0), R))
 
 
 def s300_gantry(ctx, B0, B1, yd, yb, legs):
