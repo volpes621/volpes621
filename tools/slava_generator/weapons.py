@@ -345,40 +345,101 @@ def s300_hatch(ctx, Bc, cx, ytop):
     ctx.add(ctx.sw('deck_red'), lathe([(2.0, 0.0), (2.0, 0.06), (1.9, 0.07)], seg=32), xf=M(o))
 
 
+# lid-drive unit, hatch-local (lf toward the grey cover, ls across it), metres; after the B-204 museum model
+DRV_FRONT, DRV_DEPTH, DRV_H = 0.5, 1.1, 0.76                  # main boxes: front face, fore-aft depth, height
+DRV_BOXES = ((0.32, 0.60), (-0.33, 0.62))                     # left / right main box: centre ls, width
+DRV_U = (-0.3, 0.6, -0.01, 0.88, 0.32)                        # upper box: centre lf, depth, centre ls, width, height
+DRV_S = (-0.07, 0.86, -0.81, 0.30, 0.68)                      # side box: centre lf, depth, centre ls, width, height
+DRV_LIDS = {'drv_lid_l': (0.64, 1.14), 'drv_lid_r': (0.66, 1.14), 'drv_lid_u': (0.92, 0.64), 'drv_lid_s': (0.34, 0.9)}
+
+
 def s300_drive(ctx, Bc, cx, ytop):
     """lid-drive unit over the centre of the eight-cell drum, squared up to the grey loading cover on cell lid 0
-    (aft-port; same on every launcher, per the 1984 overhead photo): base frame with side rails, two flanged
-    boxes with a bolted seam, upper and side boxes, lifting eyes. The cover lies straight ahead of the boxes
-    and the two L-shaped arms run parallel to the box sides (museum-model close-ups)."""
+    (aft-port; same on every launcher), detailed after the B-204 museum-model close-ups:
+    - base frame, and a keyhole plate joining it to the cover disc, with a bolted hold-down rail;
+    - two main boxes as wide together as the cover, flanged bolted lids with heart-shaped lifting handles,
+      the seam between them carried up the front, over the top and across the upper box with clamp blocks;
+    - a raised upper box with latches and two handles, a set-back side box with its own clamped seam;
+    - two box-section arms running straight from brackets on the front corners to clevises on the cover rim;
+    - the brown round-topped junction box beside the cover."""
     pt = ctx.paint
-    y0 = ytop + 0.03
     a0 = math.radians(S3_COVER_ANG)
     ca, sa = math.cos(a0), math.sin(a0)
     R = rot_y(math.pi - a0)                                   # local +z toward the cover, local x across
     fw = np.array([sa, 0.0, -ca])                             # world direction toward the cover
+    sx_w = R @ np.array([1.0, 0, 0])                          # world direction of local x (across)
 
     def at(lf, ls, y):
         """hatch-local point: lf toward the cover, ls across it, y up."""
         return P3(Bc + lf * ca - ls * sa, cx + lf * sa + ls * ca, y)
 
-    def put(geo, lf, ls, y=0.0):
-        ctx.add(pt, geo, xf=M(at(lf, ls, y), R))
-    c = -0.5                                                  # box cluster centre, behind the drum centre
-    put(rbox(1.7, 0.1, 2.0, r=0.12, seg=1), c + 0.1, 0.0, y0)                     # frame reaching to the cover
-    for ls in (-0.65, 0.65):
-        put(box(0.1, 0.08, 2.0, center=(0, 0, 0)), c + 0.1, ls, y0 + 0.14)       # side rails
-    yb = y0 + 0.1
-    ux = R @ np.array([1.0, 0, 0])
-    for (ls, h, d, df) in ((0.47, 1.05, 1.4, 0.0), (-0.46, 0.95, 1.3, -0.05)):
-        put(rbox(0.88, h, d, r=0.05, seg=1, bevel=0.05, y0=yb), c + df, ls)
-        put(rbox(0.96, 0.06, d + 0.08, r=0.05, seg=1, y0=yb + h - 0.03), c + df, ls)                 # flanged lid
-        e = at(c + df, ls, yb + h + 0.03)                                                          # lifting eye
-        ctx.add(pt, pipe([e - ux * 0.09, e - ux * 0.05 + np.array([0, 0.12, 0]), e + ux * 0.05 + np.array([0, 0.12, 0]),
-                          e + ux * 0.09], 0.02, seg=3), occ=False)
-    put(box(0.07, 1.02, 1.45, center=(0, 0, 0)), c, 0.005, yb + 0.55)                              # bolted seam
-    put(rbox(1.15, 0.45, 0.7, r=0.05, seg=1, bevel=0.04, y0=yb + 1.02), c - 0.35, 0.05)
-    put(rbox(1.23, 0.06, 0.78, r=0.05, seg=1, y0=yb + 1.44), c - 0.35, 0.05)
-    put(rbox(0.34, 0.8, 1.0, r=0.05, seg=1, bevel=0.03, y0=yb), c - 0.05, -1.08)
+    def put(geo, lf, ls, y=0.0, sw=None, occ=None):
+        ctx.add(sw or pt, geo, xf=M(at(lf, ls, y), R), occ=occ)
+
+    def decal(name, lf, ls, y, w, d):
+        c = at(lf, ls, y)
+        ex, ez = sx_w * w / 2, fw * d / 2
+        ctx.add(ctx.rect(name), _quad(c - ex + ez, c + ex + ez, c + ex - ez, c - ex - ez,
+                                      uv=[(0, 0), (1, 0), (1, 1), (0, 1)], n=np.array([0, 1.0, 0])))
+
+    def handle(lf, ls, y):
+        """heart-shaped lifting handle standing on a lid, leaning back from the cover."""
+        o = at(lf, ls, y)
+        up = np.array([0, math.cos(0.8), 0]) - fw * math.sin(0.8)
+        loop = [o + sx_w * u + up * v for (u, v) in ((-0.045, 0.0), (-0.08, 0.06), (-0.065, 0.115), (0.0, 0.145),
+                                                     (0.065, 0.115), (0.08, 0.06), (0.045, 0.0))]
+        ctx.add(pt, pipe(loop, 0.013, seg=3), occ=False)
+
+    def clamps(lf0, ls0, y0_, lf1, ls1, y1_, n, size, faces):
+        """n clamp blocks evenly spaced along a seam strip."""
+        for k in range(n):
+            t = (k + 0.5) / n
+            put(box(*size, center=(0, 0, 0), faces=faces), lf0 + (lf1 - lf0) * t, ls0 + (ls1 - ls0) * t,
+                y0_ + (y1_ - y0_) * t)
+    y0 = ytop + 0.03
+    yb = y0 + 0.08                                            # top of the base frame
+    yl = yb + DRV_H + 0.03                                    # top of the main-box lids
+    bc = DRV_FRONT - DRV_DEPTH / 2                            # main boxes' centre (lf)
+    # base frame, keyhole plate to the cover (top just under the cover's) and bolted hold-down rail
+    put(rbox(1.72, 0.08, 1.34, r=0.06, seg=1), bc, -0.16, y0)
+    put(rbox(1.2, 0.1485, S3_RING - DRV_FRONT, r=0.02, seg=1, bevel=0.05), (S3_RING + DRV_FRONT) / 2, 0.0, ytop)
+    put(box(1.3, 0.06, 0.08, center=(0, 0.03, 0), faces='XxYZz'), DRV_FRONT + 0.06, -0.01, ytop + 0.1485)
+    decal('drv_rail', DRV_FRONT + 0.06, -0.01, ytop + 0.2115, 1.3, 0.08)
+    # main boxes with flanged lids, bolt rows and handles
+    for (ls, w), nm in zip(DRV_BOXES, ('drv_lid_l', 'drv_lid_r')):
+        put(rbox(w, DRV_H, DRV_DEPTH, r=0.04, seg=1, bevel=0.03, y0=yb), bc, ls)
+        lw, ld = DRV_LIDS[nm]
+        put(rbox(lw, 0.05, ld, r=0.05, seg=1, y0=yl - 0.05), bc, ls)
+        decal(nm, bc, ls, yl + 0.003, lw, ld)
+        handle(DRV_FRONT - 0.25, ls, yl)
+    # seam between the main boxes: up the front, over the lids, up and over the upper box, with clamps
+    ulf, ud, uls, uw, uh = DRV_U
+    uf = ulf + ud / 2                                         # upper box front face (lf)
+    yu = yl + uh                                              # top of the upper box body
+    put(box(0.05, DRV_H, 0.04, center=(0, DRV_H / 2, 0), faces='XxYZ'), DRV_FRONT + 0.02, -0.005, yb)
+    clamps(DRV_FRONT + 0.045, -0.005, yb + 0.1, DRV_FRONT + 0.045, -0.005, yb + DRV_H - 0.02, 5,
+           (0.085, 0.05, 0.05), 'XxYyZ')
+    put(box(0.05, 0.035, DRV_FRONT - uf, center=(0, 0.0175, 0), faces='XxYZ'), (DRV_FRONT + uf) / 2, -0.005, yl)
+    clamps(uf, -0.005, yl + 0.035, DRV_FRONT, -0.005, yl + 0.035, 5, (0.085, 0.05, 0.065), 'XxYZz')
+    put(rbox(uw, uh, ud, r=0.04, seg=1, bevel=0.03, y0=yl), ulf, uls)
+    put(rbox(uw + 0.04, 0.05, ud + 0.04, r=0.05, seg=1, y0=yu - 0.02), ulf, uls)
+    decal('drv_lid_u', ulf, uls, yu + 0.033, *DRV_LIDS['drv_lid_u'])
+    put(box(0.05, uh, 0.04, center=(0, uh / 2, 0), faces='XxYZ'), uf + 0.02, -0.005, yl)
+    clamps(uf + 0.045, -0.005, yl + 0.05, uf + 0.045, -0.005, yu, 2, (0.085, 0.05, 0.05), 'XxYyZ')
+    put(box(0.05, 0.035, ud, center=(0, 0.0175, 0), faces='XxYZz'), ulf, -0.005, yu + 0.03)
+    clamps(ulf - ud / 2, -0.005, yu + 0.065, uf, -0.005, yu + 0.065, 3, (0.085, 0.05, 0.065), 'XxYZz')
+    for ls in (-0.3, 0.3):                                    # latches on the upper box front, lid handles
+        put(box(0.08, 0.1, 0.05, center=(0, 0, 0), faces='XxYyZ'), uf + 0.025, uls + ls, yu - 0.1)
+        handle(ulf, uls + ls, yu + 0.03)
+    # side box, set back, with a clamped seam strip on its front edge
+    slf, sd, sls, sw_, sh = DRV_S
+    put(rbox(sw_, sh, sd, r=0.04, seg=1, bevel=0.03, y0=yb), slf, sls)
+    put(rbox(sw_ + 0.04, 0.05, sd + 0.04, r=0.05, seg=1, y0=yb + sh - 0.02), slf, sls)
+    decal('drv_lid_s', slf, sls, yb + sh + 0.033, *DRV_LIDS['drv_lid_s'])
+    sf, sl_edge = slf + sd / 2, sls + sw_ / 2
+    put(box(0.04, sh, 0.04, center=(0, sh / 2, 0), faces='XxYZ'), sf + 0.02, sl_edge - 0.03, yb)
+    clamps(sf + 0.045, sl_edge - 0.03, yb + 0.1, sf + 0.045, sl_edge - 0.03, yb + sh - 0.04, 3,
+           (0.07, 0.05, 0.05), 'XxYyZ')
     # grey loading cover on cell lid 0, with two pins
     ctx.add(pt, lathe([(0.6, 0.0), (0.6, 0.1), (0.55, 0.15), (0.0, 0.15)], seg=24), xf=M(at(S3_RING, 0.0, ytop)))
     cc = at(S3_RING, 0.0, ytop + 0.152)
@@ -387,21 +448,27 @@ def s300_drive(ctx, Bc, cx, ytop):
                                        uv=[(0, 1), (1, 1), (1, 0), (0, 0)], n=np.array([0, 1.0, 0])))
     for off in (-1.0, 1.0):
         q = math.pi + off * 1.9                               # around the cover from its rear
-        ctx.add(pt, lathe([(0.075, 0.0), (0.075, 0.17), (0.055, 0.2), (0.0, 0.21)], seg=8),
+        ctx.add(pt, lathe([(0.1, 0.0), (0.1, 0.025), (0.072, 0.03), (0.072, 0.17), (0.055, 0.2), (0.0, 0.21)], seg=8),
                 xf=M(at(S3_RING + 0.47 * math.cos(q), 0.47 * math.sin(q), ytop + 0.15)))
-    # L-shaped arms, parallel to the box sides: a post against the box front and a raking arm down to a
-    # pivot on the cover rim
-    for ls in (-0.56, 0.56):
-        f = at(S3_RING - math.sqrt(0.6 ** 2 - ls ** 2), ls, ytop + 0.18)
-        a = at(c + 0.78, ls, y0 + 0.1)
-        e = at(c + 0.78, ls, y0 + 0.5)
-        ctx.add(pt, taper_beam(a, e, 0.14, 0.18, 0.12, 0.16, up=fw))
-        ctx.add(pt, taper_beam(e, f, 0.12, 0.16, 0.1, 0.12))
-        ctx.add(pt, cylinder(0.09, 0.18, seg=8), xf=M(f + np.array([0, -0.07, 0])))
-    # red junction box on the hatch rim beside the cover (to its right, seen from the cover side)
+    # arms: brackets on the main boxes' front corners, box-section struts running straight (parallel to the
+    # box sides) down to clevises on the cover rim
+    lf_c = S3_RING - 0.06                                     # clevis on the cover rim
+    for ls in (-0.64, 0.64):
+        put(box(0.09, 0.18, 0.16, center=(0, 0, 0)), DRV_FRONT - 0.07, ls, yb + 0.45)
+        top = at(DRV_FRONT + 0.02, ls, yb + 0.45)
+        bot = at(lf_c, ls, ytop + 0.22)
+        ctx.add(pt, taper_beam(top, bot, 0.09, 0.13, 0.08, 0.11, cham=0.2))
+        put(box(0.1, 0.14, 0.14, center=(0, 0, 0)), lf_c, ls, ytop + 0.17)
+        ctx.add(ctx.sw('dark'), cylinder(0.03, 0.14, seg=6), xf=M(at(lf_c, ls, ytop + 0.19) - sx_w * 0.07,
+                                                                 R @ rot_z(-math.pi / 2)))
+    # brown round-topped junction box on the hatch rim beside the cover (to its right, seen from the cover side)
     jq = math.radians(-29.0)
-    ctx.add(ctx.sw('red'), rbox(0.3, 0.42, 0.3, r=0.04, seg=1, bevel=0.03, y0=ytop),
-            xf=M(at(1.7 * math.cos(jq), 1.7 * math.sin(jq), 0.0), R))
+    jl, js = 1.7 * math.cos(jq), 1.7 * math.sin(jq)
+    brown = ctx.sw('deck_red')
+    put(rbox(0.3, 0.26, 0.26, r=0.03, seg=1, y0=0.0), jl, js, ytop, sw=brown)
+    ctx.add(brown, lathe([(0.0, -0.13), (0.15, -0.13), (0.15, 0.13), (0.0, 0.13)], seg=6, arc=math.pi),
+            xf=M(at(jl, js, ytop + 0.26), R @ rot_x(-math.pi / 2)))
+    put(box(0.14, 0.09, 0.012, center=(0, 0, 0)), jl + 0.132, js, ytop + 0.27, sw=ctx.sw('black'))
 
 
 def s300_gantry(ctx, B0, B1, yd, yb, legs):
@@ -665,9 +732,59 @@ def paint_vls_top(L, rect):
     L.mask_apply(L.draw_mask(w, h, studs), col=red * 0.8, add_height=1.0, x0=x0, y0=y0)
 
 
+def paint_bolt_frame(L, rect, w_m, d_m, pitch=0.1, inset=0.032, step=0.075):
+    """flanged lid of a drive-unit box (w_m x d_m metres): bolt heads at about `pitch` round the edge and the
+    recessed step of the raised centre panel; transparent elsewhere."""
+    x0, y0, x1, y1 = rect
+    w, h = x1 - x0, y1 - y0
+    base = st.PAL['super'] * 1.05
+    L.rect(x0, y0, x1, y1, col=base, alpha=0.0)
+    kx, ky = w / w_m, h / d_m                                 # pixels per metre
+
+    def bolts(d, s):
+        r = 0.013
+        corners = ((inset, inset), (w_m - inset, inset), (w_m - inset, d_m - inset), (inset, d_m - inset))
+        for i in range(4):
+            (xa, ya), (xb, yb) = corners[i], corners[(i + 1) % 4]
+            n = max(1, int(round(math.hypot(xb - xa, yb - ya) / pitch)))
+            for k in range(n):
+                t = k / n
+                bx, by = (xa + (xb - xa) * t) * kx, (ya + (yb - ya) * t) * ky
+                d.ellipse([(bx - r * kx) * s, (by - r * ky) * s, (bx + r * kx) * s, (by + r * ky) * s], fill=255)
+
+    def panel(d, s):
+        d.rectangle([step * kx * s, step * ky * s, (w_m - step) * kx * s, (d_m - step) * ky * s], outline=255,
+                    width=max(1, int(round(1.3 * s))))
+    L.mask_apply(L.draw_mask(w, h, panel), col=base * 0.8, alpha=1.0, add_height=-0.7, x0=x0, y0=y0)
+    L.mask_apply(L.draw_mask(w, h, bolts), col=base * 0.86, alpha=1.0, add_height=0.9, x0=x0, y0=y0)
+    a = L.alpha[y0:y1, x0:x1]
+    L.alpha[y0:y1, x0:x1] = np.where(a > 0.5, 1.0, 0.0)
+
+
+def paint_bolt_row(L, rect, w_m, pitch=0.1):
+    """hold-down rail top: a single row of bolt heads along its length."""
+    x0, y0, x1, y1 = rect
+    w, h = x1 - x0, y1 - y0
+    base = st.PAL['super'] * 1.05
+    L.rect(x0, y0, x1, y1, col=base, alpha=0.0)
+    k = w / w_m
+
+    def bolts(d, s):
+        n = int(round(w_m / pitch))
+        for i in range(n):
+            bx, r = (i + 0.5) * w / n, 0.016 * k
+            d.ellipse([(bx - r) * s, (h / 2 - r) * s, (bx + r) * s, (h / 2 + r) * s], fill=255)
+    L.mask_apply(L.draw_mask(w, h, bolts), col=base * 0.86, alpha=1.0, add_height=0.9, x0=x0, y0=y0)
+    a = L.alpha[y0:y1, x0:x1]
+    L.alpha[y0:y1, x0:x1] = np.where(a > 0.5, 1.0, 0.0)
+
+
 def register(m):
     m.alloc('ak_door', 48, 96, paint_ak_door)
     m.alloc('ak_hatch', 48, 48, paint_ak_hatch)
     m.alloc('ak_warn', 128, 64, paint_ak_warn)
     m.alloc('vls_lid', 128, 128, paint_vls_lid)
     m.alloc('perf', 64, 128, paint_perf)
+    for nm, (w_m, d_m) in DRV_LIDS.items():                  # ~160 px/m
+        m.alloc(nm, int(round(w_m * 160)), int(round(d_m * 160)), lambda L, r, a=w_m, b=d_m: paint_bolt_frame(L, r, a, b))
+    m.alloc('drv_rail', 208, 14, lambda L, r: paint_bolt_row(L, r, 1.3))
