@@ -31,6 +31,8 @@ python build.py out.glb --no-ao          # AO 굽기 생략(빠름)
 | `texkit.py` | 텍스처 페인팅 유틸리티(노이즈, 노멀맵 생성) |
 | `ao.py` | 정점 AO 굽기(Embree 레이캐스트) |
 
+`meshkit.py`, `texkit.py`, `ao.py`와 `fonts/`는 `tools/gorshkov_generator`도 그대로 가져다 씁니다. 이 파일들을 고친 뒤에는 두 모델을 모두 다시 생성해 결과를 확인하세요.
+
 ## 좌표 규칙
 
 - 도면 기준으로 `B`는 함수 끝에서 후방으로 잰 거리(m), `x`는 좌현 방향(m), `y`는 흘수선 위 높이(m)입니다.

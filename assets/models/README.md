@@ -1,4 +1,17 @@
-# Slava급 순양함 (Project 1164) — 로우폴리 모델
+# 함정 모델
+
+Free DDG-51(Arleigh Burke) 에셋과 같은 화풍, 같은 스케일, 같은 좌표계로 만든 로우폴리 함정 모델입니다. 두 모델 모두 `tools/`의 절차적 생성기로 다시 만들 수 있습니다.
+
+| 파일 | 함정 | 삼각형 | 크기 | 생성기 |
+|---|---|---|---|---|
+| `slava_class_cruiser.glb` | Slava급 순양함 Moskva (121) | 75,086 | 8.3 MB | `tools/slava_generator` |
+| `admiral_gorshkov_class_frigate.glb` | Admiral Gorshkov급 프리깃 Admiral Gorshkov (454) | 28,918 | 4.6 MB | `tools/gorshkov_generator` |
+
+![lineup](previews/gorshkov_lineup.png)
+
+왼쪽부터 Admiral Gorshkov, DDG-51, Slava를 같은 축척으로 놓은 모습입니다.
+
+## Slava급 순양함 (Project 1164) — 로우폴리 모델
 
 ![bow](previews/slava_bow.png)
 
@@ -14,7 +27,7 @@
 | 파일 크기 | 8.3 MB | 5.4 MB |
 | 전장 | 186.4 m (실측 1:1) | 153.9 m (실측 1:1) |
 
-## 좌표계
+### 좌표계
 
 DDG-51 에셋과 같습니다. 같은 씬에 그대로 배치하면 실제 크기 비율이 맞습니다.
 
@@ -25,7 +38,7 @@ DDG-51 에셋과 같습니다. 같은 씬에 그대로 배치하면 실제 크�
 
 ![vs DDG-51](previews/slava_vs_ddg51.png)
 
-## 머티리얼
+### 머티리얼
 
 | 이름 | 크기 | 용도 |
 |---|---|---|
@@ -37,7 +50,7 @@ DDG-51 에셋과 같습니다. 같은 씬에 그대로 배치하면 실제 크�
   - three.js, Babylon.js, Godot에서는 자동으로 적용됩니다.
   - Unity나 Unreal의 기본 머티리얼은 정점 컬러를 무시할 수 있습니다. 이 경우 음영만 약간 평평해지고 나머지는 정상입니다.
 
-## 회전·애니메이션용 노드
+### 회전·애니메이션용 노드
 
 각 노드의 피벗은 실제 회전 중심에 있습니다. 노드를 Y축으로 돌리면 선회, 포신 노드를 X축으로 돌리면 앙각이 됩니다.
 
@@ -54,7 +67,7 @@ DDG-51 에셋과 같습니다. 같은 씬에 그대로 배치하면 실제 크�
 
 정적인 부분은 `Hull`, `Superstructure`, `Launchers`(P-500/P-1000 16기), `Weapons_VLS`(S-300F 8기), `Boats`로 묶여 있습니다.
 
-## 고증 근거
+### 고증 근거
 
 - **선형과 배치**: A. Kuleshov의 1:100 도면(1993)을 사용했습니다. 측면도, 평면도, 선도(정면 선도), 상세도 5·6·7번을 서로 정합한 뒤 치수를 측정했습니다. 도면은 개인 참고용이라 저장소에 포함하지 않았습니다.
 - **사진 교차 검증**: Moskva(2009·2012·2017년), Varyag(2011·2017년), Marshal Ustinov(1993·2018년)의 Wikimedia Commons 사진과 비교했습니다.
@@ -81,7 +94,7 @@ DDG-51 에셋과 같습니다. 같은 씬에 그대로 배치하면 실제 크�
 
 ![profile](previews/slava_profile.png)
 
-## 다른 함정 버전
+### 다른 함정 버전
 
 `tools/slava_generator`로 함번과 함명을 바꿔 다시 생성할 수 있습니다.
 
@@ -93,7 +106,84 @@ python build.py varyag.glb  --ship varyag                                # Varya
 python build.py ustinov.glb --ship ustinov                               # Marshal Ustinov 055
 ```
 
-## 크레디트
+### 크레디트
 
 - 비교 이미지(`previews/slava_vs_ddg51.png`)에 나오는 DDG-51은 Yi Tsung Lee의 "1:1 Low poly US NAVY DDG-51 USS Arleigh Burke"이며, CC-BY-4.0 라이선스입니다.
 - 함명 글꼴은 DejaVu Sans Bold(Bitstream Vera 라이선스)를 썼습니다. 함번 숫자는 생성기가 직접 획으로 그립니다. 숫자가 아닌 함번에는 Big Shoulders(SIL OFL 1.1)를 씁니다. 두 글꼴 모두 라이선스 파일과 함께 생성기 안에 들어 있습니다.
+
+## Admiral Gorshkov급 프리깃 (Project 22350) — 로우폴리 모델
+
+![bow](previews/gorshkov_bow.png)
+
+`admiral_gorshkov_class_frigate.glb`는 Slava와 같은 방식으로 처음부터 생성기로 만든 Admiral Gorshkov급 프리깃 모델입니다. 무료로 받을 수 있는 기존 모델은 게임에서 추출한 것이거나 형상이 부정확해서 쓰지 않았습니다. 기본 표기는 **Admiral Gorshkov(함번 454)** 입니다.
+
+| 항목 | Admiral Gorshkov (이 모델) | DDG-51 (기준 에셋) |
+|---|---|---|
+| 형식 | glTF 2.0 바이너리(`.glb`), 확장 없음 | glTF 2.0 바이너리 |
+| 삼각형 / 정점 | 28,918 / 27,964 | 49,381 / 59,640 |
+| 머티리얼 | 3개 | 5개 |
+| 텍스처 구성 | baseColor + metallicRoughness + normal | 동일 |
+| alpha 모드 | MASK(난간·안전망·사다리) | MASK |
+| 파일 크기 | 4.6 MB | 5.4 MB |
+| 전장 | 135.0 m (실측 1:1) | 153.9 m (실측 1:1) |
+
+### 좌표계
+
+DDG-51, Slava와 같습니다. 단위는 미터, +Y가 위, +Z가 함수, +X가 좌현이고 설계 흘수선은 y = 0입니다. 원점은 전장의 중앙(z = 0)이며 함수는 z = +67.5, 함미는 z = −67.5입니다.
+
+### 머티리얼
+
+| 이름 | 크기 | 용도 |
+|---|---|---|
+| `Gorshkov_Atlas` | 2048² RGBA | 선체 측면, 갑판, 함번·함명, 창문, 난간, 헬기갑판 마킹, 수직발사기 덮개, 폴리멘트 배열면, 장비 색상 견본 |
+| `Gorshkov_Paint` | 1024² 타일 | 상부구조와 장비의 밝은 회청색 도장 |
+| `Gorshkov_Deck` | 512² 타일 | UKSK 블록·01갑판·격납고 지붕의 회색 미끄럼 방지 도장 |
+
+정점 컬러 `COLOR_0`에 앰비언트 오클루전을 구워 넣은 것도 Slava와 같습니다.
+
+### 회전·애니메이션용 노드
+
+| 노드 | 설명 |
+|---|---|
+| `A192M` → `A192M_Gun` | 130 mm 함포의 선회부와 포신(피벗은 포이) |
+| `Palash_P`, `Palash_S` → `*_Guns` | 30 mm CIWS의 선회부와 6연장 포 2문이 달린 포가 |
+| `Furke4` | 5P-27 탐색 레이더 회전부 |
+
+정적인 부분은 `Hull`, `Appendages`(추진축·프로펠러·방향타), `Forecastle`, `Weapons`(Redut 32셀, UKSK 16셀, KT-216, MTPU), `Superstructure`, `Sensors`, `Boats`로 묶여 있습니다.
+
+### 고증 근거
+
+- **선형과 배치**: 1:500 일반배치도(좌·우현 측면도, 평면도, 정면도, 후면도)를 전장 135.0 m로 축척을 맞춘 뒤 측정했습니다. 도면은 상용 자료라 저장소에 넣지 않았습니다.
+  - 전장 135.0 m, 너클(주갑판 가장자리) 폭 16.2 m, 흘수 4.55 m(소나 돔 포함 6.9 m)입니다.
+  - 너클 높이는 함수 7.05 m에서 함미 4.92 m까지 낮아집니다. 너클 위의 현장, UKSK 블록, 01갑판, 격납고 옆면은 모두 선체와 같은 면에서 5.5° 안쪽으로 기운 스텔스 형상입니다.
+  - 함수 현장에는 기만체 발사기가 들어가는 개구부(B 38.4–44.5 m)가 있습니다.
+- **사진 교차 검증**: 러시아 국방부(2018년), 크렘린(2019년), Mehr 통신(2023년)이 공개한 Wikimedia Commons 사진(CC BY 4.0)과 비교했습니다.
+- **사진 정합 검증**: 2018년 측면 사진에 카메라를 맞춰(랜드마크 12개, 오차 4.5 px) 모델을 같은 시점으로 렌더하고 비교했습니다. 이 비교로 아래를 고쳤습니다.
+  - 격납고 앞면을 B 99.0 m로 옮겼습니다.
+  - 팔라시 2기를 격납고 뒤쪽 양 모서리의 웰(높이 9.9 m) 안으로 내렸습니다. 지붕 위에 두면 사진보다 1.8 m 높게 보입니다.
+  - 팔라시와 격납고 위 레이돔의 크기를 사진에 맞추고, 연돌 뒤와 격납고 위 레이돔을 캡슐형으로 바꿨습니다.
+- **상부구조**:
+  - 함교는 앞면이 경사진 블록이고, 창문은 앞면 14개, 모서리면 1개, 옆면 2개입니다. 지붕에 Puma 레이돔과 Pal-N 항해 레이더 2기가 있습니다.
+  - 마스트는 수직 벽의 하부 블록 위에 45° 돌린 사각뿔 탑을 얹은 형태입니다. 폴리멘트 배열면 4장이 탑의 네 면에, ESM 상자가 네 모서리에 붙어 있고, 꼭대기 플랫폼에 푸르케-4가 있습니다.
+  - 연돌은 앞면과 옆면이 경사진 상자이고 윗부분은 검게 칠했습니다. 옆에는 단정 2척이 있습니다.
+- **무장**: A-192M 130 mm 함포와 둥근 방호벽, Redut 8셀 모듈 4기, UKSK 3S14 16셀, 팔라시 2기, KT-216 기만체 발사기(현장 개구부, UKSK 블록, 01갑판), MTPU 14.5 mm 기관총 2정을 넣었습니다. Paket-NK 발사관은 격납고 옆면의 셔터 데칼로 표현했습니다.
+
+![profile](previews/gorshkov_profile.png)
+
+![stern](previews/gorshkov_stern.png)
+
+### 다른 함정 버전
+
+```bash
+cd tools/gorshkov_generator
+pip install -r requirements.txt
+python build.py ../../assets/models/admiral_gorshkov_class_frigate.glb   # Admiral Gorshkov 454 (현재 파일)
+python build.py kasatonov.glb --ship kasatonov                            # Admiral Kasatonov 461
+python build.py golovko.glb   --ship golovko                              # Admiral Golovko 456
+python build.py gorshkov_417.glb --pennant 417                            # 2018~2020년 함번
+```
+
+### 크레디트
+
+- 비교 이미지(`previews/gorshkov_lineup.png`)에 나오는 DDG-51은 Yi Tsung Lee의 "1:1 Low poly US NAVY DDG-51 USS Arleigh Burke"이며, CC-BY-4.0 라이선스입니다.
+- 함명 글꼴과 함번 숫자는 Slava 생성기와 같은 것을 씁니다.
