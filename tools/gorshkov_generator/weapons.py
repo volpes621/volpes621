@@ -7,7 +7,7 @@ import numpy as np
 from meshkit import *
 from meshkit import _quad
 import atlas as st
-from kit import M, P3
+from kit import M, P3, extrude_x
 from parts import rbox, pipe, disc, axis_frame
 
 PAL = st.PAL
@@ -330,19 +330,48 @@ def paint_uksk_top(L, rect):
 # =============================================================================================
 # Palash CIWS
 # =============================================================================================
-PALASH_BODY = ((0.55, -0.48), (0.55, 0.4), (0.0, 0.58))   # half plan of the central housing (x, z): prow forward
-PALASH_GUN_X = 1.04            # gun axes either side of the body
-PALASH_TRUNNION = (1.12, 0.02)  # elevation axis: height, z
+# Combat module as fitted in the hangar-roof wells of Admiral Kasatonov (photographs at the 2019 naval show and
+# Navy Day): a box pedestal on a bolted deck ring, a central housing with a ribbed front door, and the optronic
+# head on a narrow neck, with a small sensor on a bracket at its rear right. A gun pod on each side holds the
+# AO-18KD gun. Each pod is a long rounded block that
+# pivots on trunnions behind the training axis, with a round bearing cover on its outer face. The black barrel
+# casing leaves the front of the pod beside the housing, through a brass collar, and is held by a clamp ring on
+# struts. Local frame: z along the guns, x to the module's left, y up from the deck ring.
+PALASH_HOUSING = (0.42, -1.15, 0.35, 0.7, 1.5)      # central housing: half-width, rear z, front z, bottom and top height
+PALASH_TRUNNION = (1.25, -0.45)                      # elevation axis through the gun pods: height, z
+PALASH_POD = (0.43, 1.03, -0.6, 0.62, -0.6, 0.28)   # pod about the trunnions: inner/outer x, rear/front z, bottom/top y
+PALASH_GUN = (0.9, -0.02, 1.6, 0.13)                 # barrel axis x and height (trunnion frame), casing length, radius
+PALASH_HEAD = (-0.1, 1.68, 0.56, 0.6, 0.5)           # optronic head: centre z, base height, width, height, depth
+PALASH_ELEV = 6.0                                    # gun elevation as built (deg)
+
+
+def _rounded_zy(z0, z1, y0, y1, radii, seg=4):
+    """convex rounded rectangle in the (z, y) plane, corner radii (front-bottom, front-top, rear-top, rear-bottom)."""
+    corners = (((z1, y0), (-1, 1), -math.pi / 2), ((z1, y1), (-1, -1), 0.0), ((z0, y1), (1, -1), math.pi / 2),
+               ((z0, y0), (1, 1), math.pi))
+    pts = []
+    for ((zc, yc), (dz, dy), a0), r in zip(corners, radii):
+        cz, cy = zc + dz * r, yc + dy * r
+        for k in range(seg + 1):
+            a = a0 + (math.pi / 2) * k / seg
+            pts.append((cz + r * math.cos(a), cy + r * math.sin(a)))
+    return pts
+
+
+def _x_prism(c, uvs, prof_zy, x0, x1, xf, node=None):
+    """convex prism: a (z, y) profile extruded along x from x0 to x1, mapped to the world by xf."""
+    a = [xf((x0, y, z)) for (z, y) in prof_zy]
+    b = [xf((x1, y, z)) for (z, y) in prof_zy]
+    polys = [a, b] + [[a[i], a[(i + 1) % len(a)], b[(i + 1) % len(a)], b[i]] for i in range(len(a))]
+    _faces(c, uvs, polys, node=node)
 
 
 def palash(c, pos, facing=0.0, node='Palash'):
-    """3M89 Palash combat module in the gun-only fit of Project 22350, after the KBP display model (Army-2016)
-    and the Palma-SU photograph: bolted deck ring, pedestal with a buffer cylinder, central housing with a
-    V prow and chamfered top, ribbed cradle drums on both sides, an AO-18KD six-barrel gun outboard of each
-    drum (receiver, black barrel casing, clamp ring and struts), optronic fire-control head on a turntable
-    pedestal. About 2.3 m tall and 2.4 m wide across the guns."""
+    """3M89 Palash combat module in the gun-only fit of Project 22350 (see the notes above PALASH_HOUSING).
+    About 2.3 m tall and 2.2 m wide across the gun pods."""
     o = np.asarray(pos, float)
     R = rot_y(facing)
+    X, Y, Z = np.eye(3)
 
     def W(p):
         return o + R @ np.asarray(p, float)
@@ -353,69 +382,89 @@ def palash(c, pos, facing=0.0, node='Palash'):
         aa = 2 * math.pi * (k + 0.5) / 16
         c.add(c.sw('mid'), cylinder(0.03, 0.035, seg=6), xf=M(o + np.array([0.93 * math.cos(aa), 0.06, 0.93 * math.sin(aa)])),
               node='Weapons')
-    # rotating part (node pivot on the training axis)
+    # rotating part (node pivot on the training axis): turntable, box pedestal with the buffer cylinder in front
     c.b.node(node, parent='Weapons', translation=o)
     c.add(c.sw('mid'), cylinder(0.8, 0.08, seg=24, caps=(False, True), y0=0.12), xf=M(o))
-    c.add(c.paint, rbox(1.0, 0.42, 0.9, r=0.14, seg=2, bevel=0.03, y0=0.2), xf=M(o, R))
-    c.add(c.paint, cylinder(0.065, 0.62, seg=10, caps=(True, True), y0=-0.31), xf=M(W((0.0, 0.33, 0.47)), R @ rot_z(math.pi / 2)))
+    c.add(c.paint, rbox(1.0, 0.5, 1.3, r=0.1, seg=2, bevel=0.03, y0=0.2), xf=M(W((0.0, 0.0, -0.45)), R))
+    c.add(c.paint, cylinder(0.065, 0.62, seg=10, caps=(True, True), y0=-0.31), xf=M(W((0.0, 0.34, 0.27)), R @ rot_z(math.pi / 2)))
     for sx in (-0.31, 0.31):                                     # buffer end blocks
-        c.add(c.paint, box(0.1, 0.14, 0.12, center=(0, 0, 0)), xf=M(W((sx, 0.33, 0.45)), R))
-    # central housing: V prow, the top front edge chamfered back
-    (xh, zr), (_, zc), (_, zp) = PALASH_BODY
-
-    def ring(y, cut):
-        return [W(p) for p in ((xh, y, zr), (xh, y, zc - cut), (0.0, y, zp - 1.6 * cut), (-xh, y, zc - cut), (-xh, y, zr))]
-    loft_solid(c, c.paint, [ring(0.6, 0.0), ring(1.36, 0.0), ring(1.56, 0.17)])
-    for sx in (-1, 1):                                           # handles on the two prow facets
-        for y in (0.95, 1.25):
-            zf = zp - (zp - zc) * 0.28 / xh + 0.02
-            c.add(c.sw('mid'), box(0.18, 0.03, 0.03, center=(0, 0, 0)),
-                  xf=M(W((sx * 0.28, y, zf)), R @ rot_y(sx * math.atan2(zp - zc, xh))))
-    # optronic fire-control head on a turntable pedestal
-    c.add(c.paint, lathe([(0.42, 1.56), (0.42, 1.6), (0.36, 1.62), (0.36, 1.78), (0.3, 1.8), (0.0, 1.8)], seg=24),
-          xf=M(o))
-    for sx in (-1, 1):                                           # yoke
-        c.add(c.paint, box(0.05, 0.4, 0.34, center=(0, 0, 0)), xf=M(W((sx * 0.29, 1.98, 0.0)), R))
-    hb = W((0.0, 1.82, 0.02))
-    c.add(c.paint, rbox(0.52, 0.5, 0.46, r=0.05, seg=1, bevel=0.03), xf=M(hb, R))
-    fz = 0.02 + 0.235
-    for (x, y, r_) in ((-0.12, 2.18, 0.075), (0.12, 2.18, 0.075)):
-        c.add(c.sw('glass'), cylinder(r_, 0.02, seg=12, caps=(True, False)), xf=M(W((x, y, fz)), R @ rot_x(math.pi / 2)))
-    c.add(c.sw('glass'), box(0.15, 0.06, 0.02, center=(0, 0, 0)), xf=M(W((-0.1, 2.02, fz + 0.005)), R))
-    for (x, y) in ((0.04, 1.95), (0.15, 1.95), (-0.15, 1.92)):
-        c.add(c.sw('black'), cylinder(0.035, 0.02, seg=8, caps=(True, False)), xf=M(W((x, y, fz)), R @ rot_x(math.pi / 2)))
-    c.add(c.paint, box(0.56, 0.03, 0.12, center=(0, 0, 0)), xf=M(W((0.0, 2.33, 0.2)), R))   # sun visor
-    # elevating mass: cradle drums and the two guns (child node, pivot on the elevation axis)
+        c.add(c.paint, box(0.1, 0.14, 0.12, center=(0, 0, 0)), xf=M(W((sx, 0.34, 0.25)), R))
+    # central housing: chamfered along the top front and top rear edges and down the front corners
+    hx, zr, zf, yb, yt = PALASH_HOUSING
+    housing = [(X, hx), (-X, hx), (Y, yt), (-Y, -yb), (Z, zf), (-Z, -zr),
+               plane_through((0, yt, zf - 0.26), (1, yt, zf - 0.26), (0, yt - 0.18, zf), (0, 1.0, 0.0)),
+               plane_through((0, yt, zr + 0.3), (1, yt, zr + 0.3), (0, yt - 0.3, zr), (0, 1.0, 0.0))]
+    for sx in (1, -1):
+        housing.append(plane_through((sx * (hx - 0.07), 0, zf), (sx * (hx - 0.07), 1, zf), (sx * hx, 0, zf - 0.07), (0, 1.0, 0.0)))
+    plane_solid(c, c.paint, housing, xf=W)
+    # front door: upper panel with four diagonal stiffeners, plain lower panel, two handles below the chamfer
+    c.add(c.paint, box(0.5, 0.26, 0.025, center=(0, 0, 0)), xf=M(W((0.0, 1.17, zf + 0.012)), R))
+    for x in (-0.18, -0.06, 0.06, 0.18):
+        c.add(c.paint, box(0.025, 0.22, 0.025, center=(0, 0, 0)), xf=M(W((x, 1.17, zf + 0.035)), R @ rot_z(math.pi / 4)))
+    c.add(c.paint, box(0.5, 0.24, 0.02, center=(0, 0, 0)), xf=M(W((0.0, 0.88, zf + 0.01)), R))
+    for x in (-0.16, 0.16):
+        c.add(c.sw('mid'), box(0.14, 0.03, 0.03, center=(0, 0, 0)), xf=M(W((x, 1.28, zf + 0.02)), R))
+    # optronic head on a turntable: box with rounded corners, a shutter over the sensor windows and a sun visor,
+    # and a small sensor on a bracket at its rear right corner
+    hz, hy, hw, hh, hd = PALASH_HEAD
+    c.add(c.paint, lathe([(0.3, yt), (0.3, yt + 0.035), (0.21, yt + 0.05), (0.21, hy - 0.03), (0.26, hy - 0.02), (0.26, hy),
+                          (0.0, hy)], seg=24), xf=M(W((0.0, 0.0, hz))))
+    c.add(c.paint, rbox(hw, hh, hd, r=0.14, seg=2, bevel=0.03, y0=hy), xf=M(W((0.0, 0.0, hz)), R))
+    fz = hz + hd / 2
+    c.add(c.sw('dark'), box(0.44, 0.42, 0.012, center=(0, 0, 0)), xf=M(W((0.0, hy + 0.29, fz + 0.004)), R))
+    c.add(c.sw('mid'), box(0.4, 0.38, 0.02, center=(0, 0, 0)), xf=M(W((0.0, hy + 0.29, fz + 0.012)), R))
+    for x in (-0.07, 0.07):
+        c.add(c.sw('mid'), cylinder(0.015, 0.012, seg=6, caps=(True, False)), xf=M(W((x, hy + 0.32, fz + 0.022)), R @ rot_x(math.pi / 2)))
+    c.add(c.paint, box(hw + 0.04, 0.03, 0.2, center=(0, 0, 0)), xf=M(W((0.0, hy + hh + 0.015, fz - 0.06)), R))
+    bx, bz = -(hw / 2 + 0.06), hz - hd / 2 + 0.02               # bracket: a curved plate rising from the turntable
+    c.add(c.paint, extrude_x([(bz - 0.2, -0.04), (bz + 0.06, -0.04), (bz + 0.06, 0.42), (bz - 0.06, 0.42), (bz - 0.2, 0.14)],
+                             -0.02, 0.02), xf=M(W((bx, hy, 0.0)), R))
+    c.add(c.paint, cylinder(0.075, 0.16, seg=12, caps=(True, True), y0=-0.08), xf=M(W((bx, hy + 0.4, bz)), R @ rot_x(math.pi / 2)))
+    c.add(c.sw('glass'), cylinder(0.05, 0.01, seg=10, caps=(True, False), y0=0.08), xf=M(W((bx, hy + 0.4, bz)), R @ rot_x(math.pi / 2)))
+    # elevating mass: the two gun pods and their barrels (child node, pivot on the trunnion axis)
     ty, tz = PALASH_TRUNNION
     piv = W((0.0, ty, tz))
     c.b.node(node + '_Guns', parent=node, translation=piv)
-    el = math.radians(6.0)
+    el = math.radians(PALASH_ELEV)
     Re = R @ rot_x(-el)
 
     def G(p):
         return piv + Re @ np.asarray(p, float)
     d = Re @ np.array([0, 0, 1.0])
+    xi, xo, pz0, pz1, py0, py1 = PALASH_POD
+    gx, gy, gl, gr = PALASH_GUN
+    prof = _rounded_zy(pz0, pz1, py0, py1, (0.1, 0.1, 0.44, 0.36), seg=5)
     for sx in (-1, 1):
-        # ribbed cradle drum between the housing and the gun
-        c.add(c.paint, cylinder(0.38, 0.3, seg=20, caps=(True, True), y0=0.0), xf=M(G((sx * 0.56, 0, 0)), Re @ rot_z(-sx * math.pi / 2)))
-        for k in range(3):
-            c.add(c.sw('mid'), cylinder(0.395, 0.03, seg=20, caps=(False, False), y0=0.04 + k * 0.1),
-                  xf=M(G((sx * 0.56, 0, 0)), Re @ rot_z(-sx * math.pi / 2)))
-        gx = sx * PALASH_GUN_X
-        # receiver (light grey box), feed box below it, black barrel casing, muzzle with six bores
-        c.add(c.paint, rbox(0.34, 0.4, 0.95, r=0.07, seg=1, bevel=0.03, y0=-0.2), xf=M(G((gx, 0.0, -0.15)), Re))
-        c.add(c.paint, rbox(0.3, 0.28, 0.5, r=0.05, seg=1, y0=-0.48), xf=M(G((gx, 0.0, -0.25)), Re))
-        c.add(c.sw('black'), lathe([(0.0, 0.3), (0.15, 0.3), (0.15, 1.85), (0.135, 1.9), (0.0, 1.9)], seg=18),
-              xf=M(G((gx, 0.0, 0.0)), axis_frame(d)))
-        c.add(c.paint, cylinder(0.19, 0.14, seg=18, caps=(True, True), y0=0.0), xf=M(G((gx, 0.0, 0.3)), axis_frame(d)))
+        _x_prism(c, c.paint, prof, sx * xi, sx * xo, G)
+        # bearing cover on the outer face with its bolt ring, trunnion boss against the housing
+        c.add(c.paint, cylinder(0.3, 0.035, seg=24, caps=(False, True), y0=0.0), xf=M(G((sx * xo, 0, 0)), Re @ rot_z(-sx * math.pi / 2)))
+        c.add(c.paint, cylinder(0.1, 0.07, seg=12, caps=(False, True), y0=0.0), xf=M(G((sx * xo, 0, 0)), Re @ rot_z(-sx * math.pi / 2)))
+        for k in range(12):
+            aa = 2 * math.pi * k / 12
+            c.add(c.sw('mid'), cylinder(0.018, 0.05, seg=6, caps=(False, True), y0=0.0),
+                  xf=M(G((sx * xo, 0.25 * math.sin(aa), 0.25 * math.cos(aa))), Re @ rot_z(-sx * math.pi / 2)))
+        c.add(c.sw('mid'), cylinder(0.2, 0.02, seg=16, caps=(False, False), y0=0.0), xf=M(G((sx * hx, 0, 0)), Re @ rot_z(-sx * math.pi / 2)))
+        # cooling cylinder at the rear outer corner, feed cover on top
+        c.add(c.paint, cylinder(0.055, 0.36, seg=10, caps=(True, True), y0=-0.18),
+              xf=M(G((sx * (xo + 0.05), 0.0, pz0 + 0.18)), Re @ rot_x(-0.35)))
+        c.add(c.paint, rbox(0.3, 0.06, 0.4, r=0.04, seg=1), xf=M(G((sx * (xi + xo) / 2, py1, 0.1)), Re))
+        c.add(c.paint, box(0.3, 0.26, 0.12, center=(0, 0, 0)), xf=M(G((sx * (gx - 0.1), py0 + 0.2, pz1 + 0.05)), Re))
+        c.add(c.paint, cylinder(0.06, 0.3, seg=10, caps=(True, True), y0=0.0), xf=M(G((sx * (xi + 0.12), py0 + 0.32, pz1)), axis_frame(d)))
+        # barrel: brass collar at the pod front, black casing, clamp ring, muzzle with six bores
+        b0 = G((sx * gx, gy, pz1))
+        c.add(c.sw('tan'), cylinder(0.165, 0.12, seg=18, caps=(True, True), y0=-0.02), xf=M(b0, axis_frame(d)))
+        c.add(c.sw('black'), lathe([(0.0, 0.1), (gr, 0.1), (gr, gl - 0.05), (gr - 0.015, gl), (0.0, gl)], seg=18),
+              xf=M(b0, axis_frame(d)))
         for k in range(6):
             aa = 2 * math.pi * k / 6
             c.add(c.sw('dark'), cylinder(0.022, 0.02, seg=6, caps=(True, False)),
-                  xf=M(G((gx + 0.075 * math.cos(aa), 0.075 * math.sin(aa), 1.9)), axis_frame(d)))
-        cl = G((gx, 0.0, 1.3))                                      # clamp ring and the struts to the cradle
-        c.add(c.paint, cylinder(0.18, 0.1, seg=18, caps=(True, True), y0=-0.05), xf=M(cl, axis_frame(d)))
-        for (dy, dx) in ((0.17, -0.12 * sx), (-0.17, -0.12 * sx)):
-            c.add(c.paint, tube_path([cl + Re @ np.array([dx, dy, 0]), G((sx * 0.86, dy * 1.4, 0.3))], 0.025, seg=5))
+                  xf=M(G((sx * gx + 0.065 * math.cos(aa), gy + 0.065 * math.sin(aa), pz1 + gl)), axis_frame(d)))
+        zc = pz1 + 1.0
+        c.add(c.paint, cylinder(gr + 0.035, 0.12, seg=18, caps=(True, True), y0=-0.06), xf=M(G((sx * gx, gy, zc)), axis_frame(d)))
+        for p0, p1 in (((sx * gx, gy + gr + 0.03, zc), (sx * (xo - 0.2), py1, pz1 - 0.1)),
+                       ((sx * gx, gy + gr + 0.03, zc), (sx * (xo - 0.15), py1, pz0 + 0.5)),
+                       ((sx * (gx - gr - 0.03), gy - 0.05, zc), (sx * (xi + 0.1), py0 + 0.25, pz1))):
+            c.add(c.paint, tube_path([G(p0), G(p1)], 0.025, seg=5))
 
 
 # =============================================================================================
