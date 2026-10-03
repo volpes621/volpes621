@@ -17,7 +17,7 @@ from kit import *
 import model as S2
 import markings as MK
 import parts as PT
-from parts import rbox
+from parts import rbox, disc
 import weapons as WP
 import sensors as SN
 import fittings as FT
@@ -35,7 +35,6 @@ HANGAR_Y = 12.2       # hangar roof
 SLOPE_Y = 11.3        # top of the sloped wheelhouse front = foot of the window band
 WIN_Y = 12.6          # top of the window band
 ROOF_Y = 12.9         # wheelhouse / mast-house roof
-PLATFORM_Y = 22.3     # radar platform at the top of the tower (profile drawing)
 
 
 def dk(B, x=0.0):
@@ -468,10 +467,14 @@ def forecastle(m):
         WP.redut_module(c, B, x, dk(B, abs(x)))
     for s in (1, -1):                                         # KT-216 in the bulwark cut-outs
         WP.kt216(c, P3(40.7, s * 5.0, dk(40.7, 5.0)), facing=s * math.pi / 2)
+    # launchers on box pedestals along the front of the Redut field: two to port, a covered one beside them
+    # (Admiral Kasatonov, 2019 aerial photograph)
+    for x in (2.6, 1.2):
+        WP.kt216(c, P3(34.6, x, dk(34.6, x)), facing=0.0, el=35.0, ped=0.9)
+    WP.covered_mount(c, P3(34.6, -0.2, dk(34.6, 0.2)), facing=0.0, ped=0.9)
     # deck vents and lockers by the Redut field
     m.b.node('Forecastle')
     for s in (1, -1):
-        PT.round_vent(c, P3(34.2, s * 3.4, dk(34.2, 3.4)), r=0.3, h=0.5)
         PT.ready_locker(c, P3(44.0, s * 5.0, dk(44.0, 5.0)), w=1.1, h=0.9, d=0.55, yaw=math.pi)
 
 
@@ -506,8 +509,6 @@ def uksk_block(m):
     c.add(c.deck, (P, N, np.stack([P[:, 2], P[:, 0]], axis=1), I))
     m.b.node('Weapons')
     WP.uksk_field(c, 46.45, 52.1, 2.2, UKSK_Y)
-    for s in (1, -1):
-        WP.kt308(c, P3(54.6, s * 5.4, UKSK_Y), facing=s * math.pi / 2)
     m.b.node('Superstructure')
     # railings along the block edges and across its front
     for s in (1, -1):
@@ -555,15 +556,15 @@ def wheelhouse(m):
         if s < 0:
             corners = [corners[1], corners[0], corners[3], corners[2]]
         SN.face_quad(c, c.rect('win2'), corners, off=0.025)
-    # roof fittings: Puma radome, navigation radars, whips, searchlights, railing
+    # roof fittings: Puma radome, whips, searchlights, small radomes at the roof edges, railing
     m.b.node('Sensors')
-    SN.radome(c, P3(60.5, 0.0, ROOF_Y), 1.95, ped_h=0.3, ped_r=1.25)
+    SN.bell_radome(c, P3(60.9, 0.0, ROOF_Y), 2.07, 2.1, 1.7, ped_h=0.25, ped_r=1.5)
     for s in (1, -1):
-        SN.pal_n(c, P3(60.45, s * 3.05, ROOF_Y), yaw=s * 0.4)
         whip(c, P3(58.4, s * 6.4, ROOF_Y), 6.0, r=0.05)
         whip(c, P3(62.5, s * 2.2, ROOF_Y), 6.3, r=0.05)
         PT.lamp(c, P3(58.3, s * 7.0, ROOF_Y), 'white')
         searchlight(c, P3(60.4, s * 6.6, ROOF_Y), facing=s * 0.6)
+        SN.small_dome(c, P3(61.6, s * 6.4, ROOF_Y), r=0.42, post=0.4)
     m.b.node('Superstructure')
     rp = wh_half(ROOF_Y, BR_SLOPE_B - 0.45, CF_HI + 0.1, out=0.05)
     pts = [P3(B, x, ROOF_Y) for (B, x) in rp[::-1]] + [P3(B, -x, ROOF_Y) for (B, x) in rp]
@@ -571,26 +572,60 @@ def wheelhouse(m):
 
 
 # =============================================================================================
-# mast house, bridge wings, tower with the Poliment faces, radar platform
+# mast house, bridge wings and the integrated mast
 # =============================================================================================
+# The integrated mast follows photographs of Admiral Kasatonov (2019: aerial views from forward port, aft port
+# and aft starboard; Navy Day views from ahead and abeam) and Admiral Gorshkov (2018 side and aerial views,
+# Kronstadt bow quarter):
+# - The tower is an octagonal frustum on the mast-house roof, every face leaning in about 5 deg. At the array
+#   level it is 5.7 m long and 7.3 m wide, with 2.7 m front and aft faces, 1.1 m side faces and four 3.25 m
+#   diagonal faces at 45 deg. The diagonal faces carry the Poliment arrays (17.8-21.4 m).
+# - A tapered nose block in front of the tower, 3.6 m wide at its front, carries the optronic director.
+# - A walkway runs round the tower at 17.3 m, just below the arrays. Sponsons on the side faces carry small
+#   radomes; a long platform at 18.35 m reaches 6.5 m out with a radome at its end. ESM boxes hang below the
+#   walkway, ball cameras sit at the top front corners, and a white ribbed half-drum sits on each diagonal
+#   face below its array.
+# - The top deck at 21.7 m carries a narrower block, flush with the front face, up to 23.25 m, and the
+#   Furke-4 on top of it (antenna 23.9-26.9 m). The signal mast stands just aft of the tower, joined to it by
+#   brackets and a long gaff.
 MH = (61.5, 75.6, 4.2)                    # mast house B0, B1, half-width at the 01 deck
-LOWER = (64.8, 75.0, 3.25, 17.0)          # lower tower block: nose B, aft B, half-width, top
-LOWER_PLAN = ((64.8, 1.6), (67.3, 3.25), (74.4, 3.25), (75.0, 2.6))   # half outline: tapered nose, aft chamfer
-DIAMOND_B = 71.35                         # upper tower: square pyramid turned 45 deg (faces at +-45 deg)
-DIAMOND_HD = (3.05, 2.33)                 # half-diagonal at the foot (LOWER top) and at the platform
-ARRAY_Y, ARRAY_W, ARRAY_H = 19.2, 2.7, 3.8
-PLATFORM = (68.7, 77.6, 2.7)              # radar platform: B0, B1, half-width (profile drawing)
+TOWER_B = 71.55                           # centre of the tower
+TOWER_Y = (ROOF_Y, 21.7)                  # foot on the mast-house roof, top deck
+TOWER_REF = (19.6, 2.85, 3.65, 1.35, 0.55)  # at height: half-length, half-width, half front/aft face, half side face
+TOWER_LEAN = 0.09                         # inward lean of every face (m per m of height)
+FRONT_BLOCK = ((65.0, 1.8), (67.3, 2.9), (69.6, 2.9))   # nose block in front of the tower: half outline
+FRONT_TOP = 17.3                          # nose block top, level with the walkway
+ARRAY_Y, ARRAY_W, ARRAY_H = 19.6, 2.8, 3.65    # Poliment faces inside their frames: centre height, size
+LEDGE_Y = 17.3                            # walkway round the tower
+TOP_BLOCK = (3.0, 1.35, 1.13, 23.25)      # block on the top deck: length aft of the front face, half-width at its
+                                          # foot and top, top height
+SIGNAL_B = 76.2                           # signal mast
 
 
-def diamond(y):
-    t = (y - LOWER[3]) / (PLATFORM_Y - LOWER[3])
-    hd = DIAMOND_HD[0] + (DIAMOND_HD[1] - DIAMOND_HD[0]) * t
-    return [(DIAMOND_B - hd, 0.0), (DIAMOND_B, hd), (DIAMOND_B + hd, 0.0), (DIAMOND_B, -hd)]
+def tower_plan(y, grow=0.0):
+    """octagon of the tower at height y as [(B, x), ...]: front-port corner first, then aft round the port
+    side; every face pushed out by `grow` metres."""
+    yr, hl, hw, hf, hs = TOWER_REF
+    e = TOWER_LEAN * (yr - y) + grow
+    k = e * (math.sqrt(2.0) - 1.0)            # a 45 deg face moved out by e lengthens its neighbours by e(sqrt2 - 1)
+    hl, hw, hf, hs = hl + e, hw + e, hf + k, hs + k
+    B = TOWER_B
+    return [(B - hl, hf), (B - hs, hw), (B + hs, hw), (B + hl, hf), (B + hl, -hf), (B + hs, -hw), (B - hs, -hw),
+            (B - hl, -hf)]
 
 
-def diamond_pt(k, y):
-    B, x = diamond(y)[k]
-    return np.array([x, y, zB(B)])
+def tower_face(i, y):
+    """face i of the tower (edge i -> i+1 of tower_plan) at height y: midpoint, horizontal outward normal,
+    tilted outward normal, and the half-width of the face."""
+    poly = tower_plan(y)
+    (Ba, xa), (Bb, xb) = poly[i], poly[(i + 1) % 8]
+    pa, pb = np.array([xa, y, zB(Ba)]), np.array([xb, y, zB(Bb)])
+    t = pb - pa
+    n = normalize(np.array([t[2], 0.0, -t[0]]))
+    mid = (pa + pb) / 2
+    if np.dot(n, mid - np.array([0.0, y, zB(TOWER_B)])) < 0:
+        n = -n
+    return mid, n, normalize(n + np.array([0.0, TOWER_LEAN, 0.0])), np.linalg.norm(t) / 2
 
 
 def mast(m):
@@ -610,90 +645,120 @@ def mast(m):
     for s in (1, -1):
         door(c, 66.5, s * (hwm - 0.15), DECK01_Y, (s, 0, 0))
         door(c, 72.5, s * (hwm - 0.18), DECK01_Y, (s, 0, 0))
-    # lower tower block (vertical walls, tapered nose) and the turned pyramid above it
-    lb0, lb1, lhw, ltop = LOWER
-    lower = sym_poly(list(LOWER_PLAN))
-    house(c, lower, ROOF_Y, ltop, top='paint')
-    rail_poly(c, lower, ltop, inset=0.1)
-    house(c, diamond(ltop), ltop, PLATFORM_Y, top='paint', top_poly_Bx=diamond(PLATFORM_Y))
+    # nose block in front of the tower, and the tower itself (planes leaning in from the reference octagon)
+    front = sym_poly(list(FRONT_BLOCK))
+    house(c, front, ROOF_Y, FRONT_TOP, top='paint')
     for s in (1, -1):
-        door(c, 69.0, s * (lhw + 0.01), ROOF_Y, (s, 0, 0))
-        ladder(c, P3(lb1 + 0.05, s * 1.2, ROOF_Y), P3(lb1 + 0.05, s * 1.2, ltop), normal=(0, 0, -1))
-    a, b_ = diamond_pt(0, LOWER[3]), diamond_pt(0, PLATFORM_Y - 0.1)
-    ladder(c, a + np.array([0, 0.05, 0.12]), b_ + np.array([0, 0, 0.12]), width=0.45, normal=normalize(np.array([0, 0.25, 1.0])))
-    # Poliment faces on the four faces of the pyramid
-    m.b.node('Sensors')
-    for k in range(4):
-        a0, a1 = diamond_pt(k, ARRAY_Y), diamond_pt((k + 1) % 4, ARRAY_Y)
-        b0, b1 = diamond_pt(k, ARRAY_Y + 1.0), diamond_pt((k + 1) % 4, ARRAY_Y + 1.0)
-        n = normalize(np.cross(a1 - a0, b0 - a0))
-        cen = (a0 + a1) / 2
-        if np.dot(n, cen - np.array([0.0, cen[1], zB(DIAMOND_B)])) < 0:
-            n = -n
-        up = normalize((b0 + b1) / 2 - cen)
-        SN.array_panel(c, cen, n, up, ARRAY_W, ARRAY_H, depth=0.14)
-    # ESM box on the aft edge, small radomes stacked on brackets at the side edges
-    SN.esm_box(c, diamond_pt(2, 18.9), (0, 0, -1), w=1.15, h=1.6, d=0.55)
-    for k, sx in ((1, 1), (3, -1)):
-        for yy in (17.9, 19.9):
-            p = diamond_pt(k, yy)
-            c.add(c.paint, box(0.9, 0.12, 0.25, center=(0, 0, 0)), xf=M(p + np.array([sx * 0.4, 0.0, 0.0])))
-            SN.small_dome(c, p + np.array([sx * 0.75, 0.06, 0.0]), r=0.36, post=0.12)
-    # optronic director on a tall pedestal at the front of the lower block (port), a small dome to starboard
-    pe = P3(66.2, 1.55, ltop)
-    c.add(c.paint, rbox(1.0, 2.0, 1.0, r=0.12, seg=1, bevel=0.05), xf=M(pe))
-    c.add(c.paint, rbox(1.4, 1.35, 1.5, r=0.3, seg=2, bevel=0.1, y0=2.0), xf=M(pe))
-    c.add(c.sw('glass'), box(0.5, 0.36, 0.03, center=(0, 0, 0)), xf=M(pe + np.array([0.0, 2.75, 0.765])))
-    c.add(c.sw('dark'), box(0.36, 0.3, 0.03, center=(0, 0, 0)), xf=M(pe + np.array([-0.4, 2.62, 0.765])))
-    SN.small_dome(c, P3(66.4, -1.55, ltop), r=0.45, post=0.35)
-    for s in (1, -1):                                         # side sensors on the lower block (profile)
-        SN.eo_drum(c, P3(73.7, s * (lhw + 0.35), 15.0), yaw=s * math.pi / 2)
-        SN.esm_box(c, P3(66.05, s * 2.42, 15.3), (s * 0.83, 0, 0.55), w=0.9, h=1.0, d=0.35)
-    # radar platform with railing, small domes on brackets at the corners, Furke-4 on top
-    m.b.node('Superstructure')
-    p0, p1, phw = PLATFORM
-    plat = chamfer_rect(p0, p1, phw, cf=0.7, ca=0.5)
-    slab(c, plat, PLATFORM_Y - 0.25, PLATFORM_Y, top='deck')
-    rail_poly(c, plat, PLATFORM_Y, inset=0.1)
-    m.b.node('Sensors')
-    for (B, x) in ((p0 + 0.3, 2.15), (p0 + 0.3, -2.15), (p1 - 0.4, 2.2), (p1 - 0.4, -2.2)):
-        SN.small_dome(c, P3(B, x, PLATFORM_Y), r=0.32)
-    SN.furke4(c, P3(71.5, 0.0, PLATFORM_Y), yaw=0.0)
-    # aft balconies stacked on the pyramid's back, signal mast, flag gaff
-    m.b.node('Superstructure')
-    for yb in (14.6, 17.0, 19.4):
-        Bb = DIAMOND_B + DIAMOND_HD[0] - 0.6 if yb >= LOWER[3] else lb1 - 0.3
-        bal = chamfer_rect(Bb, Bb + 2.2, 1.6, cf=0.0, ca=0.5)
-        slab(c, bal, yb - 0.18, yb, top='deck')
-        rail_poly(c, bal, yb, inset=0.08, sides=(1, 2, 3, 4, 5))
-    for (ya, yb_, x) in ((ROOF_Y, 14.6, 1.0), (14.6, 17.0, -1.0), (17.0, 19.4, 1.0), (19.4, PLATFORM_Y, -1.0)):
-        ladder(c, P3(77.2, x, ya), P3(77.2, x, yb_), normal=(0, 0, -1))
-    # inclined ladder from the 01 deck behind the mast house up to the aft edge of the radar platform
-    la, lb = P3(75.9, 0.0, DECK01_Y), P3(78.1, 0.0, PLATFORM_Y - 0.25)
+        door(c, 68.3, s * (FRONT_BLOCK[1][1] + 0.01), ROOF_Y, (s, 0, 0))
+    y0, y1 = TOWER_Y
+    planes = [(np.array([0, 1.0, 0]), y1), (np.array([0, -1.0, 0]), -y0)]
+    for i in range(8):
+        mid, n, nt, _ = tower_face(i, TOWER_REF[0])
+        planes.append((nt, float(nt @ mid)))
+    WP.plane_solid(c, c.paint, planes)
+    top = tower_plan(y1)
+    rail_poly(c, top, y1, inset=0.1, sides=(1, 2, 3, 4, 5, 6))
+    # block on the top deck: front flush with the tower's front face, sides leaning in
+    tb_len, tb_w0, tb_w1, tb_top = TOP_BLOCK
+    fz = tower_face(7, y1)[0]
+    bz1 = zB(top[0][0] + tb_len)
+    blk = [(np.array([0, 1.0, 0]), tb_top), (np.array([0, -1.0, 0]), -(y1 - 0.02)), (np.array([0, 0, -1.0]), -bz1)]
+    nf = tower_face(7, y1)[2]
+    blk.append((nf, float(nf @ fz)))
+    for s in (1, -1):
+        p0 = np.array([s * tb_w0, y1, 0.0])
+        nn = normalize(np.array([s * (tb_top - y1), (tb_w0 - tb_w1), 0.0]))
+        blk.append((nn, float(nn @ p0)))
+    WP.plane_solid(c, c.paint, blk)
+    # walkway round the tower just below the arrays (over the nose block in front), railing round it
+    ledge = tower_plan(LEDGE_Y, grow=0.8)
+    slab(c, ledge, LEDGE_Y - 0.15, LEDGE_Y, top='deck')
+    rail_poly(c, ledge, LEDGE_Y, inset=0.08, sides=(1, 2, 3, 4, 5))
+    for s in (1, -1):
+        railing_pts(c, [P3(FRONT_BLOCK[0][0] + 0.1, s * (FRONT_BLOCK[0][1] - 0.1), FRONT_TOP),
+                        P3(FRONT_BLOCK[1][0], s * (FRONT_BLOCK[1][1] - 0.1), FRONT_TOP),
+                        P3(FRONT_BLOCK[2][0], s * (FRONT_BLOCK[2][1] - 0.1), FRONT_TOP)])
+    # ladders on the aft face (roof to walkway, walkway to the top deck), signal mast and its gaff
+    for (ya, yb_) in ((y0, LEDGE_Y), (LEDGE_Y, y1)):
+        pa, na = tower_face(3, ya)[0], tower_face(3, ya)[1]
+        pb = tower_face(3, yb_)[0]
+        ladder(c, pa + np.array([-0.8, 0, 0]) + na * 0.02, pb + np.array([-0.8, 0, 0]) + na * 0.02, normal=na)
+    ps0, ps1 = P3(SIGNAL_B, 0.0, LEDGE_Y), P3(SIGNAL_B, 0.0, 29.0)
+    c.add(c.paint, tube_path([ps0, ps1], 0.12, seg=8))
+    for yy in (18.4, 21.4):
+        c.add(c.paint, tube_path([tower_face(3, yy)[0] + np.array([0.6, 0, 0]), P3(SIGNAL_B, 0.0, yy)], 0.06, seg=5))
+    for (yy, half) in ((25.4, 1.7), (27.2, 0.9)):
+        c.add(c.paint, tube_path([P3(SIGNAL_B, half, yy), P3(SIGNAL_B, -half, yy)], 0.05, seg=5))
+        for s in (1, -1):
+            PT.lamp(c, P3(SIGNAL_B, s * (half - 0.1), yy + 0.05), 'white')
+    c.add(c.paint, tube_path([P3(TOWER_B + 2.5, 0.0, y1 - 0.1), P3(79.6, 0.0, 21.95)], 0.07, seg=5))
+    PT.lamp(c, ps1, 'white')
+    for dx in (-0.35, 0.35):
+        c.add(c.sw('dark'), tube_path([P3(79.4, dx, 21.9), P3(97.9, dx * 0.4, 16.9)], 0.015, seg=3), occ=False)
+    for yy in (23.6, 24.6):
+        PT.lamp(c, P3(SIGNAL_B + 0.15, 0.0, yy), 'flagred')
+    # inclined ladder from the 01 deck up to the aft end of the mast-house roof
+    la, lb = P3(78.0, 1.0, DECK01_Y), P3(B1 + 0.05, 1.0, ROOF_Y)
     ln = normalize(np.cross(lb - la, np.array([1.0, 0.0, 0.0])))
     if ln[2] > 0:
         ln = -ln
     ladder(c, la, lb, width=0.7, normal=ln)
-    for sx in (-0.38, 0.38):
-        c.add(c.paint, tube_path([la + np.array([sx, 0, 0]), lb + np.array([sx, 0, 0])], 0.05, seg=5))
+    for sx in (0.62, 1.38):
+        c.add(c.paint, tube_path([la + np.array([sx - 1.0, 0.9, 0]), lb + np.array([sx - 1.0, 0.9, 0])], 0.04, seg=5))
+    # Poliment faces on the four diagonal faces, white half-drums below them
     m.b.node('Sensors')
-    SN.small_dome(c, P3(76.6, 1.0, 14.6), r=0.45, post=0.2)
-    SN.small_dome(c, P3(76.9, -0.8, 17.0), r=0.38, post=0.2)
-    m.b.node('Superstructure')
-    c.add(c.paint, rbox(0.9, 0.9, 0.7, r=0.08, seg=1), xf=M(P3(77.0, 0.6, 19.4)))
-    ped = P3(76.4, 0.0, PLATFORM_Y)
-    top = P3(76.4, 0.0, 28.2)
-    c.add(c.paint, tube_path([ped, top], 0.13, seg=8))
-    for (yy, half) in ((25.4, 1.7), (27.2, 0.9)):
-        c.add(c.paint, tube_path([P3(76.4, half, yy), P3(76.4, -half, yy)], 0.05, seg=5))
-        for s in (1, -1):
-            PT.lamp(c, P3(76.4, s * (half - 0.1), yy + 0.05), 'white')
-    c.add(c.paint, tube_path([P3(76.0, 0.0, 18.1), P3(81.2, 0.0, 18.6)], 0.07, seg=5))
-    PT.lamp(c, top, 'white')
-    for dx in (-0.35, 0.35):
-        c.add(c.sw('dark'), tube_path([P3(79.0, dx, 21.0), P3(97.9, dx * 0.4, 16.9)], 0.015, seg=3), occ=False)
-    for yy in (23.6, 24.6):
-        PT.lamp(c, P3(76.55, 0.0, yy), 'flagred')
+    for i in (0, 2, 4, 6):
+        mid, n, nt, _ = tower_face(i, ARRAY_Y)
+        up = normalize(np.array([0, 1.0, 0]) - nt[1] * nt)
+        SN.array_panel(c, mid, nt, up, ARRAY_W, ARRAY_H, depth=0.12)
+        mid, n, nt, _ = tower_face(i, 15.0)
+        SN.half_drum(c, mid - n * 0.05, n, r=0.75, h=1.05)
+    # side faces: a short sponson with a small radome, a long platform reaching 6.5 m out with a radome at its
+    # end, an ESM box below the walkway; ball cameras at the top front corners
+    for i, s in ((1, 1), (5, -1)):
+        mid, n, nt, hfw = tower_face(i, 20.35)
+        sp = mid + n * 0.6
+        c.add(c.paint, box(1.3, 0.12, 1.3, center=(0, -0.06, 0)), xf=M(sp))
+        SN.small_dome(c, sp + n * 0.2, r=0.4, post=0.18)
+        mid, n, nt, hfw = tower_face(i, 18.35)
+        out = 6.5 - abs(mid[0])
+        pl = mid + n * out / 2
+        c.add(c.paint, box(out, 0.14, 1.2, center=(0, -0.07, 0)), xf=M(pl))
+        for dz in (-0.55, 0.55):
+            c.add(c.paint, tube_path([mid + np.array([0, -1.4, dz]), pl + n * (out / 2 - 0.3) + np.array([0, -0.1, dz])],
+                                     0.05, seg=5))
+        railing_pts(c, [mid + np.array([0, 0, 0.58]), pl + n * out / 2 + np.array([0, 0, 0.58]),
+                        pl + n * out / 2 - np.array([0, 0, 0.58]), mid - np.array([0, 0, 0.58])])
+        SN.small_dome(c, pl + n * (out / 2 - 0.45), r=0.42, post=0.15)
+        mid, n, nt, hfw = tower_face(i, 16.6)
+        SN.esm_box(c, mid + n * 0.05, n, w=0.75, h=0.95, d=0.4)
+        p = P3(tower_plan(y1)[0][0] - 0.35, s * (tower_plan(y1)[0][1] + 0.35), y1 - 0.45)
+        c.add(c.paint, box(0.7, 0.1, 0.7, center=(0, -0.05, 0)), xf=M(p))
+        SN.ball_camera(c, p, (s * 0.6, 0.0, 1.0))
+    for s in (1, -1):                                         # small radomes at the aft corners of the mast-house roof
+        SN.small_dome(c, P3(74.6, s * 3.6, ROOF_Y), r=0.42, post=0.4)
+    # aft face: small radome on a bracket above the walkway
+    mid, n, nt, _ = tower_face(3, 19.6)
+    c.add(c.paint, box(0.9, 0.1, 0.8, center=(0, -0.05, 0)), xf=M(mid + n * 0.45 + np.array([0.75, 0, 0])))
+    SN.small_dome(c, mid + n * 0.5 + np.array([0.75, 0, 0]), r=0.38, post=0.15)
+    # optronic director on the nose block (box with a large window and a small dome on top), Furke-4 on top
+    pe = P3(66.4, 0.0, FRONT_TOP)
+    c.add(c.paint, cylinder(0.45, 0.3, seg=16, caps=(False, True)), xf=M(pe))
+    Rd = rot_y(0.0)
+    c.add(c.paint, rbox(1.75, 1.65, 1.6, r=0.28, seg=2, bevel=0.1, y0=0.3), xf=M(pe, Rd))
+    c.add(c.sw('dark'), box(1.05, 1.1, 0.04, center=(0, 0, 0)), xf=M(pe + Rd @ np.array([0.0, 1.12, 0.8]), Rd))
+    c.add(c.sw('glass'), disc(0.32, seg=16), xf=M(pe + Rd @ np.array([0.0, 1.12, 0.83]), Rd @ rot_x(math.pi / 2)))
+    SN.small_dome(c, pe + np.array([0.0, 1.95, -0.1]), r=0.42, post=0.05)
+    SN.furke4(c, P3(TOWER_B, 0.0, TOP_BLOCK[3]), yaw=0.0, ped=0.45)
+    # navigation radars on pedestal boxes at the front corners of the top deck, optronic dome on the top block
+    for s in (1, -1):
+        pr = P3(70.8, s * 2.75, y1)
+        c.add(c.paint, rbox(0.7, 0.6, 0.7, r=0.08, seg=1, bevel=0.03), xf=M(pr))
+        SN.pal_n(c, pr + np.array([0, 0.6, 0]), yaw=math.pi / 2, L=2.1)
+    pt = np.array([0.0, tb_top - 0.75, float(fz[2]) + 0.25])
+    c.add(c.paint, box(0.8, 0.5, 0.5, center=(0, 0, 0)), xf=M(pt))
+    c.add(c.sw('dark'), box(0.6, 0.3, 0.02, center=(0, 0, 0)), xf=M(pt + np.array([0, 0, 0.26])))
+    SN.small_dome(c, pt + np.array([0, 0.25, 0.05]), r=0.25, post=0.05)
 
 
 # =============================================================================================
@@ -864,9 +929,12 @@ def hangar(m):
     c.add(c.paint, cylinder(0.12, 0.45, seg=8), xf=M(pd))
     c.add(c.sw('light'), lathe([(0.0, 0.45), (0.62, 0.47), (0.66, 0.52), (0.6, 0.6), (0.0, 0.62)], seg=20), xf=M(pd))
     m.b.node('Superstructure')
-    c.add(c.paint, rbox(1.3, 0.8, 0.9, r=0.08, seg=1, bevel=0.04), xf=M(P3(111.0, 0.6, yr)))
+    pdir = P3(111.0, 0.6, yr)                                 # optronic sensor on a tall drum pedestal
+    c.add(c.paint, cylinder(0.36, 1.35, seg=14, caps=(False, True)), xf=M(pdir))
+    c.add(c.paint, rbox(0.62, 0.42, 0.55, r=0.08, seg=1, bevel=0.03, y0=1.35), xf=M(pdir))
+    c.add(c.sw('dark'), box(0.4, 0.22, 0.02, center=(0, 0, 0)), xf=M(pdir + np.array([0, 1.57, -0.285])))
     whip(c, P3(104.0, -1.4, yr), 20.7 - yr, r=0.05)
-    whip(c, P3(109.3, 1.4, yr), 25.0 - yr, r=0.06)
+    whip(c, P3(109.3, 1.4, yr), 22.0 - yr, r=0.06)
     for s in (1, -1):
         raft_rack(c, P3(101.4, s * (hw_at(101.4, HANGAR_Y) - 0.7), HANGAR_Y), n=3, along=(0, 0, -1), spacing=0.85)
         raft_rack(c, P3(101.4, s * (hw_at(101.4, HANGAR_Y) - 1.45), HANGAR_Y), n=3, along=(0, 0, -1), spacing=0.85)

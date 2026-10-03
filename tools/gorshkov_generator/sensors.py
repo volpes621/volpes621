@@ -1,5 +1,6 @@
 """Project 22350 sensors: 5P-20K Poliment array faces, 5P-27 Furke-4 search radar, radomes, Pal-N
-navigation radars, optronic directors, ESM boxes. Shapes follow the 2018-2023 photographs."""
+navigation radars, optronic directors, ESM boxes, louvred half-drums and ball cameras on the mast.
+Shapes follow the 2018-2023 photographs."""
 import math
 import numpy as np
 
@@ -7,7 +8,7 @@ from meshkit import *
 from meshkit import _quad
 import atlas as st
 from kit import M
-from texkit import value_noise
+from texkit import value_noise, srgb
 from parts import rbox, disc, axis_frame
 
 PAL = st.PAL
@@ -37,33 +38,43 @@ def array_panel(c, centre, normal, up, w, h, depth=0.16, name='array'):
     c.add(c.rect(name), _quad(*corners, uv=[(0, 1), (1, 1), (1, 0), (0, 0)], n=n))
 
 
+ARRAY_SKIN = srgb('5a524c')     # brownish dark grey radome skin of the Poliment faces (2019 photographs)
+
+
 def paint_array(L, rect):
-    """Poliment face: dark grey radome skin with a fine element grid and a lighter border."""
+    """Poliment face: brownish dark grey radome skin with a fine element grid, inside a light frame lined
+    with fastener heads."""
     x0, y0, x1, y1 = rect
     w, h = x1 - x0, y1 - y0
-    L.rect(x0, y0, x1, y1, col=PAL['mid'] * 0.85, alpha=1.0, rough=0.7, metal=0.0)
+    L.rect(x0, y0, x1, y1, col=ARRAY_SKIN, alpha=1.0, rough=0.75, metal=0.0)
     n = value_noise(h, w, 16, seed=41, octaves=3)
-    L.col[y0:y1, x0:x1] *= (0.95 + 0.08 * n)[..., None]
-    for k in range(0, w, 6):
-        L.rect(x0 + k, y0 + 3, x0 + k + 1, y1 - 3, col=PAL['mid'] * 0.97, add_height=-0.15)
-    for k in range(0, h, 6):
-        L.rect(x0 + 3, y0 + k, x1 - 3, y0 + k + 1, col=PAL['mid'] * 0.97, add_height=-0.15)
-    for e in ((x0, y0, x1, y0 + 3), (x0, y1 - 3, x1, y1), (x0, y0, x0 + 3, y1), (x1 - 3, y0, x1, y1)):
-        L.rect(*e, col=PAL['super'] * 0.9, add_height=0.5)
+    L.col[y0:y1, x0:x1] *= (0.93 + 0.1 * n)[..., None]
+    for k in range(0, w, 5):
+        L.rect(x0 + k, y0 + 4, x0 + k + 1, y1 - 4, col=ARRAY_SKIN * 0.9, add_height=-0.15)
+    for k in range(0, h, 5):
+        L.rect(x0 + 4, y0 + k, x1 - 4, y0 + k + 1, col=ARRAY_SKIN * 0.9, add_height=-0.15)
+    for e in ((x0, y0, x1, y0 + 4), (x0, y1 - 4, x1, y1), (x0, y0, x0 + 4, y1), (x1 - 4, y0, x1, y1)):
+        L.rect(*e, col=PAL['super'] * 1.15, add_height=0.5)
+    for k in range(2, w - 2, 5):                  # fastener heads along the frame
+        for yy in (y0 + 1, y1 - 3):
+            L.rect(x0 + k, yy, x0 + k + 2, yy + 2, col=PAL['dark'], add_height=0.3)
+    for k in range(2, h - 2, 5):
+        for xx in (x0 + 1, x1 - 3):
+            L.rect(xx, y0 + k, xx + 2, y0 + k + 2, col=PAL['dark'], add_height=0.3)
 
 
-def furke4(c, base, yaw=0.0, node='Furke4'):
-    """5P-27 Furke-4: turntable on a drum pedestal carrying a deep, back-tilted array housing with a
-    flat face and a rounded back (3.3 m wide, 3.0 m tall, 1.5 m deep)."""
+def furke4(c, base, yaw=0.0, node='Furke4', ped=0.7):
+    """5P-27 Furke-4: turntable on a drum pedestal carrying a deep array housing tilted back about 15 deg,
+    with a flat face and a rounded back (3.1 m wide, 3.1 m tall, 2.0 m deep; side photographs 2018-2019)."""
     o = np.asarray(base, float)
-    c.add(c.paint, cylinder(0.6, 0.7, seg=16, caps=(False, True)), xf=M(o))
+    c.add(c.paint, cylinder(0.6, ped, seg=16, caps=(False, True)), xf=M(o))
     c.b.node(node, parent='Sensors', translation=o)        # rotating part, pivot on the turntable axis
     R = rot_y(yaw)
-    c.add(c.sw('mid'), cylinder(0.95, 0.2, seg=20, caps=(True, True), y0=0.7), xf=M(o))
-    tilt = math.radians(11.0)
+    c.add(c.sw('mid'), cylinder(0.95, 0.2, seg=20, caps=(True, True), y0=ped), xf=M(o))
+    tilt = math.radians(15.0)
     Rt = R @ rot_x(-tilt)
-    w, h, d = 3.3, 3.0, 2.1
-    piv = o + np.array([0, 0.9, 0])
+    w, h, d = 3.1, 3.1, 2.0
+    piv = o + np.array([0, ped + 0.2, 0])
     # plan section of the housing: flat front, rounded back
     sec = []
     for k in range(9):
@@ -80,6 +91,50 @@ def furke4(c, base, yaw=0.0, node='Furke4'):
     for k in (-1, 0, 1):
         c.add(c.sw('mid'), box(0.03, h * 0.86, 0.02, center=(0, 0, 0)), xf=M(fc + Rt @ np.array([k * w * 0.3, 0, 0]), Rt))
     c.add(c.sw('mid'), box(w * 0.82, 0.3, 0.3, center=(0, 0, 0)), xf=M(piv + Rt @ np.array([0, h + 0.15, -0.2]), Rt))
+
+
+def bell_radome(c, pos, r, wall, dome, ped_h=0.3, ped_r=None, node=None):
+    """radome with vertical walls and a flattened dome (5P-10 Puma on the bridge roof): a pedestal ring,
+    a cylinder of radius r and height `wall`, then an elliptical cap `dome` metres high."""
+    o = np.asarray(pos, float)
+    pr = ped_r if ped_r is not None else r * 0.75
+    c.add(c.paint, cylinder(pr, ped_h, seg=20, caps=(False, True)), xf=M(o), node=node)
+    c.add(c.paint, cylinder(r + 0.05, 0.1, seg=28, caps=(True, True), y0=ped_h), xf=M(o), node=node)
+    prof = [(0.0, ped_h + 0.1), (r, ped_h + 0.1), (r, ped_h + 0.1 + wall)]
+    for k in range(1, 9):
+        a = math.pi / 2 * k / 8
+        prof.append((r * math.cos(a), ped_h + 0.1 + wall + dome * math.sin(a)))
+    c.add(c.sw('radome'), lathe(prof, seg=28), xf=M(o), node=node)
+
+
+def half_drum(c, pos, normal, r=0.75, h=1.05, node=None):
+    """white ribbed half-drum fixed to a wall (four of them below the Poliment faces): a vertical half
+    cylinder, its flat side on the wall, closed by flat caps, with vertical ribs."""
+    o = np.asarray(pos, float)
+    n = normalize(np.asarray(normal, float) * np.array([1.0, 0.0, 1.0]))
+    yaw = math.atan2(n[0], n[2])
+    prof = [(0.0, 0.0), (r, 0.0), (r, h), (0.0, h)]
+    c.add(c.sw('radome'), lathe(prof, seg=10, arc=math.pi, angle0=-yaw, smooth=True),       # arc centred on n
+          xf=M(o + np.array([0, -h / 2, 0])), node=node)
+    side = np.cross(np.array([0, 1.0, 0]), n)
+    for k in range(1, 8):
+        a = math.pi * k / 8 - math.pi / 2
+        p = o + (n * math.cos(a) + side * math.sin(a)) * (r + 0.01)
+        c.add(c.sw('light'), box(0.03, h * 0.94, 0.03, center=(0, 0, 0)), xf=M(p, rot_y(yaw + a)), node=node)
+
+
+def ball_camera(c, pos, facing, r=0.27, node=None):
+    """optronic ball turret on a short post: grey sphere with a dark window cluster facing `facing`."""
+    o = np.asarray(pos, float)
+    d = normalize(np.asarray(facing, float))
+    c.add(c.paint, cylinder(0.09, 0.25, seg=8), xf=M(o), node=node)
+    cen = o + np.array([0, 0.25 + r, 0])
+    c.add(c.sw('light'), sphere(r, seg=14, rings=7), xf=M(cen), node=node)
+    c.add(c.sw('black'), disc(r * 0.55, seg=10), xf=M(cen + d * (r + 0.004), axis_frame(d)), node=node)
+    for (dx, dy) in ((-0.07, 0.05), (0.07, 0.05), (0.0, -0.08)):
+        side = normalize(np.cross(np.array([0, 1.0, 0]), d))
+        p = cen + d * (r + 0.008) + side * dx + np.array([0, dy, 0])
+        c.add(c.sw('glass'), disc(0.05, seg=8), xf=M(p, axis_frame(d)), node=node)
 
 
 def radome(c, pos, r, ped_h=0.35, ped_r=None, band_h=0.0, node=None):
@@ -111,20 +166,6 @@ def pal_n(c, pos, yaw=0.0, L=2.1):
     c.add(c.paint, cylinder(0.12, 0.45, seg=8), xf=M(o))
     c.add(c.sw('mid'), rbox(0.45, 0.3, 0.55, r=0.08, seg=1, y0=0.45), xf=M(o, R))
     c.add(c.sw('white'), rbox(L, 0.28, 0.22, r=0.08, seg=1, y0=0.8), xf=M(o, R @ rot_y(math.pi / 2)))
-
-
-def eo_drum(c, pos, yaw=0.0):
-    """optronic director (MTK-201 type): short horizontal drum with glazed end on a yoke and post."""
-    o = np.asarray(pos, float)
-    R = rot_y(yaw)
-    c.add(c.paint, cylinder(0.18, 0.5, seg=10), xf=M(o))
-    c.add(c.paint, box(0.9, 0.12, 0.4, center=(0, 0, 0)), xf=M(o + np.array([0, 0.55, 0]), R))
-    for s in (-1, 1):
-        c.add(c.paint, box(0.08, 0.5, 0.3, center=(0, 0, 0)), xf=M(o + R @ np.array([s * 0.42, 0.8, 0]), R))
-    piv = o + np.array([0, 0.92, 0])
-    d = R @ np.array([0, 0, 1.0])
-    c.add(c.paint, cylinder(0.33, 0.9, seg=14, caps=(True, True), y0=-0.45), xf=M(piv, R @ rot_x(math.pi / 2)))
-    c.add(c.sw('glass'), disc(0.22, seg=12), xf=M(piv + d * 0.455, axis_frame(d)))
 
 
 def esm_box(c, pos, normal, w=0.8, h=1.2, d=0.45):

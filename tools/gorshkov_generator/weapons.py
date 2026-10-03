@@ -1,5 +1,5 @@
 """Project 22350 weapons: A-192M 130 mm gun, Redut and UKSK 3S14 vertical launchers, Palash CIWS,
-KT-216 / KT-308 decoy launchers and the 14.5 mm MTPU pedestal mounts.
+KT-216 decoy launchers and the 14.5 mm MTPU pedestal mounts.
 Shapes follow the 2018 Russian MoD and 2023 Mehr News photographs of Admiral Gorshkov."""
 import math
 import numpy as np
@@ -470,62 +470,62 @@ def palash(c, pos, facing=0.0, node='Palash'):
 # =============================================================================================
 # decoy launchers and small arms
 # =============================================================================================
-def kt216(c, pos, facing=0.0, el=30.0, rows=2, cols=5, r=0.075, length=0.8, ped=1.0):
-    """KT-216 decoy launcher (bow photograph, 2018): box pedestal with two slots and a round port in its
-    front face, a turntable and a framed pack of short tubes trained along `facing` (yaw about +y,
-    0 = +z) and fixed at `el` degrees."""
+def _launcher_pedestal(c, o, R, ped):
+    """box pedestal narrowing upward, with a round access plate on its front face and a turntable on top."""
+    bot = [(-0.45, -0.42), (0.45, -0.42), (0.45, 0.42), (-0.45, 0.42)]
+    top = [(-0.36, -0.32), (0.36, -0.32), (0.36, 0.32), (-0.36, 0.32)]
+    c.add(c.paint, prism(bot, 0.0, ped, top=True, top_poly=top), xf=M(o, R))
+    zf = 0.42 - 0.1 * 0.45
+    c.add(c.paint, cylinder(0.2, 0.02, seg=12, caps=(True, False)), xf=M(o + R @ np.array([0.0, ped * 0.45, zf]),
+                                                                         R @ rot_x(math.pi / 2 - 0.1)))
+    c.add(c.sw('mid'), cylinder(0.38, 0.08, seg=16, caps=(True, True), y0=ped), xf=M(o))
+
+
+def kt216(c, pos, facing=0.0, el=30.0, rows=2, cols=5, r=0.065, length=1.6, ped=1.0):
+    """KT-216 decoy launcher (2018-2019 photographs): a box pedestal narrowing upward with a round access plate,
+    a yoke and a bolted cradle carrying 2 x 5 long tubes that pass right through it, white caps on the
+    muzzles; trained along `facing` (yaw about +y, 0 = +z) and fixed at `el` degrees."""
     o = np.asarray(pos, float)
     R = rot_y(facing)
-    c.add(c.paint, rbox(0.85, ped, 0.95, r=0.06, seg=1, bevel=0.04), xf=M(o, R))
-    for s in (-1, 1):                                          # slots and the round port in the pedestal
-        c.add(c.sw('black'), box(0.11, ped * 0.5, 0.02, center=(0, 0, 0)),
-              xf=M(o + R @ np.array([s * 0.2, ped * 0.5, 0.48]), R))
-    c.add(c.sw('dark'), cylinder(0.12, 0.02, seg=12, caps=(True, False)), xf=M(o + R @ np.array([0.0, ped * 0.32, 0.47]),
-                                                                             R @ rot_x(math.pi / 2)))
-    c.add(c.sw('mid'), cylinder(0.42, 0.1, seg=16, caps=(True, True), y0=ped), xf=M(o))
+    _launcher_pedestal(c, o, R, ped)
+    for s in (-1, 1):                                          # yoke
+        c.add(c.paint, box(0.06, 0.5, 0.36, center=(0, 0, 0)), xf=M(o + R @ np.array([s * 0.36, ped + 0.33, 0]), R))
     Re = R @ rot_x(-math.radians(el))
     piv = o + np.array([0, ped + 0.45, 0])
     d = Re @ np.array([0, 0, 1.0])
-    pw, ph = cols * (2 * r + 0.03) + 0.12, rows * (2 * r + 0.03) + 0.12
-    c.add(c.paint, rbox(pw, ph, length, r=0.04, seg=1, y0=-ph / 2), xf=M(piv, Re))
+    c.add(c.paint, box(0.66, 0.42, 0.62, center=(0, 0, 0)), xf=M(piv, Re))
+    sp = 2 * r + 0.008
     for i in range(cols):
         for j in range(rows):
-            off = Re @ np.array([(i - (cols - 1) / 2) * (2 * r + 0.03), (j - (rows - 1) / 2) * (2 * r + 0.03), 0])
-            c.add(c.sw('black'), disc(r * 0.8, seg=8), xf=M(piv + off + d * (length / 2 + 0.006), axis_frame(d)))
-    for s in (-1, 1):                                          # yoke
-        c.add(c.paint, box(0.06, 0.5, 0.3, center=(0, 0, 0)), xf=M(o + R @ np.array([s * (pw / 2 + 0.05), ped + 0.33, 0]), R))
+            off = Re @ np.array([(i - (cols - 1) / 2) * sp, (j - (rows - 1) / 2) * sp, 0])
+            a = piv + off - d * 0.55
+            c.add(c.sw('mid'), cylinder(r, length, seg=8, caps=(True, False)), xf=M(a, axis_frame(d)))
+            c.add(c.sw('white'), disc(r * 0.92, seg=8), xf=M(a + d * (length + 0.004), axis_frame(d)))
 
 
-def kt308(c, pos, facing=0.0, el=45.0, r=0.12, L=1.7):
-    """twin long-tube decoy launcher: two packs of 2 x 3 tubes on a common cradle, trained along `facing`."""
+def covered_mount(c, pos, facing=0.0, ped=1.0):
+    """launcher kept under a rounded hood on the same box pedestal (front of the Redut field, 2019 photograph)."""
     o = np.asarray(pos, float)
     R = rot_y(facing)
-    c.add(c.paint, rbox(1.3, 0.5, 0.9, r=0.06, seg=1, bevel=0.04), xf=M(o, R))
-    Re = R @ rot_x(-math.radians(el))
-    d = Re @ np.array([0, 0, 1.0])
-    sp = 2 * r + 0.015
-    for px in (-0.42, 0.42):
-        piv = o + R @ np.array([px, 0.95, -0.15])
-        for i in range(3):
-            for j in range(2):
-                a = piv + Re @ np.array([(i - 1) * sp * 0.98, (j - 0.5) * sp, 0]) - d * L * 0.35
-                c.add(c.sw('mid'), cylinder(r, L, seg=10, caps=(True, True)), xf=M(a, axis_frame(d)))
-                c.add(c.sw('black'), disc(r * 0.8, seg=10), xf=M(a + d * (L + 0.005), axis_frame(d)))
-        c.add(c.paint, box(3 * sp + 0.06, 2 * sp + 0.06, 0.1, center=(0, 0, 0)), xf=M(piv + d * 0.2, Re))
-    for s in (-1, 1):
-        c.add(c.paint, box(0.08, 0.7, 0.45, center=(0, 0, 0)), xf=M(o + R @ np.array([s * 0.86, 0.75, -0.1]), R))
+    _launcher_pedestal(c, o, R, ped)
+    c.add(c.paint, rbox(0.8, 0.55, 1.2, r=0.3, seg=2, bevel=0.14, y0=ped + 0.08), xf=M(o, R))
 
 
 def mtpu(c, pos, facing=0.0):
-    """14.5 mm MTPU pedestal machine gun with a small shield."""
+    """14.5 mm MTPU pedestal machine gun (Navy Day 2019 photograph): light grey post and cradle with an
+    ammunition box on each side, black KPVT barrel in its perforated jacket."""
     o = np.asarray(pos, float)
     R = rot_y(facing)
-    c.add(c.sw('dark'), cylinder(0.12, 0.95, seg=8), xf=M(o))
-    piv = o + np.array([0, 1.05, 0])
-    c.add(c.sw('dark'), rbox(0.3, 0.25, 0.9, r=0.05, seg=1, y0=-0.12), xf=M(piv, R))
-    d = R @ np.array([0, 0.05, 1.0])
-    c.add(c.sw('dark'), tube_path([piv, piv + normalize(d) * 1.4], 0.03, seg=5))
-    c.add(c.paint, box(0.7, 0.55, 0.03, center=(0, 0, 0)), xf=M(piv + R @ np.array([0, 0.1, 0.3]), R))
+    c.add(c.sw('light'), cylinder(0.2, 0.06, seg=10), xf=M(o))
+    c.add(c.sw('light'), cylinder(0.07, 0.95, seg=8), xf=M(o))
+    piv = o + np.array([0, 1.0, 0])
+    Re = R @ rot_x(-math.radians(20.0))
+    c.add(c.sw('light'), box(0.16, 0.18, 0.95, center=(0, 0.02, 0.1)), xf=M(piv, Re))
+    for s in (-1, 1):
+        c.add(c.sw('light'), box(0.22, 0.26, 0.36, center=(0, -0.1, 0)), xf=M(piv + Re @ np.array([s * 0.22, 0, -0.05]), Re))
+    d = Re @ np.array([0, 0, 1.0])
+    c.add(c.sw('black'), cylinder(0.045, 0.5, seg=8), xf=M(piv + d * 0.55, axis_frame(d)))
+    c.add(c.sw('black'), cylinder(0.022, 0.75, seg=6), xf=M(piv + d * 1.05, axis_frame(d)))
 
 
 def register(m):
