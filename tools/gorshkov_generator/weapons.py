@@ -77,27 +77,34 @@ def loft_solid(c, uvs, rings, node=None):
 # =============================================================================================
 # A-192M "Armat" 130 mm gun
 # =============================================================================================
-# Turret, local frame on the training axis (z forward, x port, y above the deck). Sizes come from the 1:500
-# plan and both profiles. Shapes come from the Arsenal plant photograph of a finished mount (2021), the Arsenal
-# design-bureau renderings, and photographs of Admiral Gorshkov (2018) and Admiral Kasatonov (2020, 2021).
+# Turret, local frame on the training axis (z forward, x port, y above the deck). Plan sizes come from the 1:500
+# plan. The front profile is convex as on the drawing: steep low down, flattening into the roof. The height
+# (roof 4.1 m above the deck) follows the photographs, which show a taller turret than the drawing.
+# Shapes come from the Arsenal plant photograph of a finished mount (2021), the Arsenal design-bureau
+# renderings, and photographs of Admiral Gorshkov (2018) and Admiral Kasatonov (2020, 2021).
 # Every part is a convex solid cut by planes:
 # - Skirt: an octagon with vertical sides. A 2 m wide nose face carries the bolted oval hatch, and 45 deg
 #   chamfers widen it to the full beam.
-# - Upper body: sides leaning in about 12 deg, then large chamfers along the roof edges, which leave a roof
-#   about 2.2 m wide (Kasatonov photographs, 2020).
-# - Cheeks: one on each side of the gun slot. Each front is a ramp rising about 33 deg from the nose to the
-#   roof (profile: B 23.5 at 8.0 m to B 27.0 at 10.15 m). A triangular facet cuts off its outer lower corner.
+# - Upper body: sides leaning in about 12 deg, then large chamfers along the roof edges.
+# - Cheeks: one on each side of the gun slot. Each front has two faces. A steep face rises about 42 deg from
+#   the nose almost to the roof. Just below the roof it bends into a short upper slope, about 13 deg, which
+#   runs on to the roof at B 26.95. A triangular facet cuts off the outer lower corner.
+# - Hood: the roof is carried across the gun slot up to the training axis, its top on the flat upper face.
 # - Rear block: behind the slot, with the back of the roof bevelled down to the vertical rear face.
-# - In the slot: the bronze-coloured cradle drum and the long barrel with a thick muzzle crown.
-GUN_SKIRT = (0.5, 1.75, ((1.0, 2.65), (1.85, 1.8), (1.85, -2.3), (1.2, -2.85)))  # y0, y1, half outline (x, z)
-GUN_ROOF = 3.7
-GUN_SIDE = ((1.85, 1.75), (1.52, 3.3), (1.08, 3.7))    # upper half section: side foot, chamfer knee, roof edge
+# - Mantlet: under the hood front, a large bronze-coloured cradle drum fills the slot and stands out ahead
+#   of it. The barrel leaves the drum through a thick breech casing and ends in a thick muzzle crown.
+GUN_SKIRT = (0.5, 1.8, ((1.0, 2.65), (1.85, 1.8), (1.85, -2.3), (1.2, -2.85)))   # y0, y1, half outline (x, z)
+GUN_ROOF = 4.1
+GUN_SIDE = ((1.85, 1.8), (1.5, 3.6), (1.08, 4.1))       # upper half section: side foot, chamfer knee, roof edge
+GUN_CREASE = (0.35, 3.9)      # crease between the steep lower front and the flatter upper front: z, y
+GUN_RAMP_TOP = -0.5           # z where the flatter upper front meets the flat roof
+GUN_FACET_Y = 2.9             # height where the outer corner facet of a cheek meets its side
 GUN_SLOT = (0.6, -1.3)        # half-width of the gun slot, z of its back wall
-GUN_RAMP_TOP = -0.35          # z of the roof's front edge, where the cheek ramps end (about 33 deg)
-GUN_FACET_Y = 2.85            # height where the outer facet of a cheek meets its side
-GUN_REAR = (-2.85, (3.1, -2.8), (3.7, -2.15))   # rear face z; the bevel across the back of the roof (y, z) to (y, z)
-GUN_AXIS = (-0.45, 2.65)      # trunnions at the back of the slot: z, height above the deck
-GUN_BARREL = 7.9              # trunnion to muzzle (muzzle at B 19.0 on the profile)
+GUN_HOOD = (0.0, 3.45)        # roof carried over the gun slot: front z, underside height
+GUN_MANTLET = 0.8             # radius of the bronze cradle drum that fills the slot
+GUN_AXIS = (0.35, 2.6)        # trunnions (cradle drum axis): z, height above the deck
+GUN_REAR = (-2.85, (3.4, -2.8), (4.1, -2.15))    # rear face z; the bevel across the back of the roof (y, z) to (y, z)
+GUN_BARREL = 7.1              # trunnion to muzzle (muzzle at B 19.0 on the profile)
 GUN_ELEV = 3.0                # barrel elevation as built (deg)
 SHIELD = (3.55, 1.35, 35.0)   # deck shield ring: radius, height, half-angle of the opening astern
 
@@ -108,10 +115,11 @@ def _side_x(y):
     return x0 + (x1 - x0) * (y - y0) / (y1 - y0)
 
 
-def _ramp_z(y):
-    """z of the cheek ramp at height y (a plane through the nose foot line and the roof's front edge)."""
+def _front_z(y):
+    """z of the steep lower front face at height y (through the nose foot line and the crease)."""
     y0, zn = GUN_SKIRT[1], GUN_SKIRT[2][0][1]
-    return zn + (GUN_RAMP_TOP - zn) * (y - y0) / (GUN_ROOF - y0)
+    zc, yc = GUN_CREASE
+    return zn + (zc - zn) * (y - y0) / (yc - y0)
 
 
 def _gun_planes():
@@ -126,16 +134,18 @@ def _gun_planes():
         plan.append(plane_through((sx * xs, 0, zrc), (sx * xr, 0, zr), (sx * xr, 1, zr), (0, 0, 0)))
     skirt = plan + [(-Y, -ys0), (Y, y0)]
     (x0, _), (xk, yk), (x1, y1) = GUN_SIDE
+    zk, yk_ = GUN_CREASE
     zt = GUN_RAMP_TOP
     zrear, (yb0, zb0), (yb1, zb1) = GUN_REAR
     ya = GUN_FACET_Y
     upper = plan + [(-Y, -y0), (Y, y1),
-                    plane_through((0, y0, zn), (1, y0, zn), (0, y1, zt), inside),            # cheek ramps
+                    plane_through((0, y0, zn), (1, y0, zn), (0, yk_, zk), inside),           # steep lower front
+                    plane_through((0, yk_, zk), (1, yk_, zk), (0, y1, zt), inside),           # flatter upper front
                     plane_through((0, yb0, zb0), (1, yb0, zb0), (0, yb1, zb1), inside)]      # bevel across the back
     for sx in (1, -1):
         upper.append(plane_through((sx * x0, y0, 0), (sx * x0, y0, 1), (sx * xk, yk, 0), inside))     # side
         upper.append(plane_through((sx * xk, yk, 0), (sx * xk, yk, 1), (sx * x1, y1, 0), inside))     # roof chamfer
-        pa = (sx * _side_x(ya), ya, _ramp_z(ya))
+        pa = (sx * _side_x(ya), ya, _front_z(ya))
         upper.append(plane_through((sx * xn, y0, zn), (sx * xc, y0, zc), pa, inside))               # corner facet
     return skirt, upper
 
@@ -192,9 +202,10 @@ def a192m(c, Bc, ydeck, train=0.0, node='A192M'):
     plane_solid(c, c.paint, upper + [(-X, -hs), (-Z, -zs)], xf=W)
     plane_solid(c, c.paint, upper + [(X, -hs), (-Z, -zs)], xf=W)
     plane_solid(c, c.paint, upper + [(Z, zs)], xf=W)
+    zh, yh = GUN_HOOD                                          # the roof carried over the slot (hood)
+    plane_solid(c, c.paint, upper + [(X, hs), (-X, hs), (-Z, -zs), (Z, zh), (-Y, -yh)], xf=W)
     zn = half[0][1]
-    chin = [(X, hs), (-X, hs), (-Y, -y1), (Z, zn), (-Z, -zs), (Y, 2.15),
-                        plane_through((0, y1 + 0.05, zn), (1, y1 + 0.05, zn), (0, 2.15, 0.9), (0, y1, 0))]
+    chin = [(X, hs), (-X, hs), (-Y, -y1), (Z, zn), (-Z, -zs), (Y, y1 + 0.03)]
     plane_solid(c, c.paint, chin, xf=W)
     # details: bolted oval hatch in the nose, roof hatch and sight, vents, rear door and rungs, side hatches
     c.add(c.paint, rbox(0.42, 0.52, 0.03, r=0.18, seg=2, y0=-0.26), xf=M(W((0.0, 1.12, zn + 0.005)), R))
@@ -221,12 +232,18 @@ def a192m(c, Bc, ydeck, train=0.0, node='A192M'):
     piv = W((0.0, GUN_AXIS[1], GUN_AXIS[0]))
     c.b.node(node + '_Gun', parent=node, translation=piv)
     dirv = R @ np.array([0.0, math.sin(elev), math.cos(elev)])
-    c.add(c.sw('tan'), cylinder(0.55, 2 * hs - 0.06, seg=24, caps=(True, True), y0=-(hs - 0.03)),
-          xf=M(piv, R @ rot_z(math.pi / 2)))
+    rm = GUN_MANTLET
+    Rg = R @ rot_x(-elev)
+    c.add(c.sw('tan'), cylinder(rm, 2 * hs - 0.04, seg=28, caps=(True, True), y0=-(hs - 0.02)),
+          xf=M(piv, Rg @ rot_z(math.pi / 2)))
+    for sx in (-1, 1):                                         # trunnion bosses against the cheeks
+        c.add(c.sw('mid'), cylinder(0.3, 0.06, seg=16, caps=(True, True), y0=0.0),
+              xf=M(piv + Rg @ np.array([sx * (hs - 0.08), 0, 0]), Rg @ rot_z(-sx * math.pi / 2)))
     L = GUN_BARREL
-    prof = [(0.0, 0.5), (0.32, 0.5), (0.32, 0.95), (0.25, 1.05), (0.24, 2.6), (0.28, 2.65), (0.28, 2.8), (0.17, 2.9),
-            (0.155, 4.9), (0.175, 4.95), (0.175, 5.1), (0.15, 5.15), (0.14, L - 0.62), (0.19, L - 0.58),
-            (0.19, L - 0.06), (0.16, L), (0.0, L)]
+    r0 = rm - 0.06
+    prof = [(0.0, r0 - 0.1), (0.36, r0 - 0.1), (0.36, r0 + 0.3), (0.3, r0 + 0.38), (0.26, r0 + 0.42), (0.25, 2.35),
+            (0.28, 2.4), (0.28, 2.55), (0.17, 2.65), (0.155, 4.55), (0.175, 4.6), (0.175, 4.75), (0.15, 4.8),
+            (0.14, L - 0.62), (0.19, L - 0.58), (0.19, L - 0.06), (0.16, L), (0.0, L)]
     c.add(c.paint, lathe(prof, seg=16), xf=M(piv, axis_frame(dirv)))
     c.add(c.sw('black'), disc(0.07, seg=12), xf=M(piv + dirv * (L + 0.002), axis_frame(dirv)))
 
